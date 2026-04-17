@@ -9,10 +9,12 @@ import { ImapFlow } from 'imapflow'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ─── CONFIGURACION ───────────────────────────────────────────
-const GROQ_API_KEY     = process.env.GROQ_API_KEY || ''
-const GEMINI_KEY       = process.env.GEMINI_KEY || ''
-const GMAIL_USER       = process.env.GMAIL_USER || ''
-const GMAIL_APP_PASS   = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '')
+// strip() elimina comillas que Railway a veces incluye en los valores
+const strip = v => (v || '').replace(/^["']|["']$/g, '').trim()
+const GROQ_API_KEY     = strip(process.env.GROQ_API_KEY)
+const GEMINI_KEY       = strip(process.env.GEMINI_KEY)
+const GMAIL_USER       = strip(process.env.GMAIL_USER)
+const GMAIL_APP_PASS   = strip(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, '')
 
 // Grupos donde al llegar una imagen, el bot la interpreta como comprobante
 // de pago y verifica en el correo de Bancolombia antes de registrar.
@@ -2997,30 +2999,36 @@ async function inicializarEvolution() {
         await new Promise(r => setTimeout(r, 3000))
         intentosQR++
         try {
-          const conexion = await evGet(`/instance/connect/${INSTANCE_NAME}`)
-          if (conexion?.base64) {
-            // Guardar QR como base64 URL
-            const dataUrl = `data:image/png;base64,${conexion.base64}`
-            fs.writeFileSync(path.join(GASTOS_DIR, 'qr_url.txt'), dataUrl)
-            console.log('[QR] ✅ QR guardado en datos/qr_url.txt')
-            console.log('[QR] Abra ese archivo y escanéelo con WhatsApp > Dispositivos vinculados')
-          } else if (conexion?.code) {
-            // Generar imagen del QR desde el código
-            try {
-              await QRCode.toFile(path.join(PROYECTO_DIR, 'QR_PERSONAL.png'), conexion.code, { width: 400 })
-              const dataUrl = await QRCode.toDataURL(conexion.code, { width: 400 })
-              fs.writeFileSync(path.join(GASTOS_DIR, 'qr_url.txt'), dataUrl)
-              console.log('[QR] ✅ QR guardado — ábralo en datos/qr_url.txt')
-            } catch {}
-          }
-          // Verificar si ya conectó
+          // Verificar estado primero
           const nuevoEstado = await evGet(`/instance/connectionState/${INSTANCE_NAME}`)
           if (nuevoEstado?.instance?.state === 'open') {
             console.log('[EVO] ✅ WhatsApp conectado!')
             break
           }
+
+          // Pedir QR
+          const conexion = await evGet(`/instance/connect/${INSTANCE_NAME}`)
+          console.log(`[QR] Respuesta Evolution: ${JSON.stringify(conexion).substring(0, 100)}`)
+
+          // Buscar QR en cualquier campo posible
+          const qrBase64 = conexion?.base64 || conexion?.qrcode?.base64 || conexion?.qr?.base64
+          const qrCode   = conexion?.code   || conexion?.qrcode?.code   || conexion?.qr?.code
+
+          if (qrBase64) {
+            const dataUrl = qrBase64.startsWith('data:') ? qrBase64 : `data:image/png;base64,${qrBase64}`
+            fs.writeFileSync(path.join(GASTOS_DIR, 'qr_url.txt'), dataUrl)
+            console.log('[QR] ✅ QR guardado en datos/qr_url.txt — escanéelo con WhatsApp')
+          } else if (qrCode) {
+            try {
+              const dataUrl = await QRCode.toDataURL(qrCode, { width: 400 })
+              fs.writeFileSync(path.join(GASTOS_DIR, 'qr_url.txt'), dataUrl)
+              console.log('[QR] ✅ QR generado — escanéelo con WhatsApp')
+            } catch {}
+          } else {
+            console.log(`[QR] Espera... (intento ${intentosQR})`)
+          }
         } catch (err) {
-          console.log(`[QR] Espera... (intento ${intentosQR})`)
+          console.log(`[QR] Error intento ${intentosQR}: ${err.message}`)
         }
       }
     }
