@@ -22,7 +22,7 @@ const GRUPOS_VERIFICACION_PAGO = ['finanzas priority ai']
 
 // En Railway: PROYECTO_DIR=/app  (variable de entorno)
 // En Windows local: apunta a la carpeta del Drive
-const PROYECTO_DIR        = process.env.PROYECTO_DIR || 'H:\\Mi unidad\\1. NEGOCIOS\\Claude\\bot-personal'
+const PROYECTO_DIR        = strip(process.env.PROYECTO_DIR) || '/app'
 const GASTOS_DIR          = path.join(PROYECTO_DIR, 'datos')
 const ASISTENTE_DIR       = GASTOS_DIR   // en Railway todo va en la misma carpeta
 const APRENDIZAJE_FILE    = path.join(GASTOS_DIR, 'aprendizaje.json')
@@ -100,11 +100,11 @@ if (!GROQ_API_KEY) {
 }
 
 // ─── EVOLUTION API ────────────────────────────────────────────
-const EVOLUTION_URL  = process.env.EVOLUTION_URL  || 'https://poetic-enthusiasm-production.up.railway.app'
-const EVOLUTION_KEY  = process.env.EVOLUTION_KEY  || 'Terrano2024SecretKey'
-const INSTANCE_NAME  = process.env.INSTANCE_NAME  || 'bot-personal'
-const WEBHOOK_URL    = process.env.WEBHOOK_URL    || ''
-const BOT_PORT       = process.env.PORT           || 3000
+const EVOLUTION_URL  = strip(process.env.EVOLUTION_URL)  || 'https://poetic-enthusiasm-production.up.railway.app'
+const EVOLUTION_KEY  = strip(process.env.EVOLUTION_KEY)  || 'Terrano2024SecretKey'
+const INSTANCE_NAME  = strip(process.env.INSTANCE_NAME)  || 'bot-personal'
+const WEBHOOK_URL    = strip(process.env.WEBHOOK_URL)    || ''
+const BOT_PORT       = process.env.PORT                  || 3000
 
 // Caché de JID de grupo → nombre en minúsculas
 const grupoJids = {}
