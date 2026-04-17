@@ -1,0 +1,9 @@
+node_modules/
+session/
+datos/*.xlsx
+datos/*.json
+datos/qr_url.txt
+QR_PERSONAL.png
+*.log
+.wwebjs_auth/
+.wwebjs_cache/
