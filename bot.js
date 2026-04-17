@@ -86,9 +86,17 @@ function esComidaAmbigua(descripcion) {
 }
 // ─────────────────────────────────────────────────────────────
 
+// DEBUG STARTUP — muestra qué variables llegaron (primeros 10 chars del key)
+console.log('=== STARTUP DEBUG ===')
+console.log('GROQ_API_KEY:', GROQ_API_KEY ? ('OK - ' + GROQ_API_KEY.substring(0,10) + '...') : 'VACIA')
+console.log('PROYECTO_DIR:', process.env.PROYECTO_DIR || '(no definida)')
+console.log('RAILWAY_ENV:', process.env.RAILWAY_ENVIRONMENT || '(no definida)')
+console.log('PUPPETEER_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH || '(no definida)')
+console.log('NODE_ENV:', process.env.NODE_ENV || '(no definida)')
+console.log('=====================')
+
 if (!GROQ_API_KEY) {
-  console.log('ERROR: Falta GROQ_API_KEY')
-  process.exit(1)
+  console.log('ADVERTENCIA: Falta GROQ_API_KEY — funciones de IA desactivadas, pero el bot continúa')
 }
 
 const GROQ_URL       = 'https://api.groq.com/openai/v1/chat/completions'
