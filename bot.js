@@ -1,6 +1,4 @@
-import pkg from 'whatsapp-web.js'
-const { Client, LocalAuth, MessageMedia } = pkg
-import qrcode from 'qrcode-terminal'
+import express from 'express'
 import QRCode from 'qrcode'
 import fs from 'fs'
 import path from 'path'
@@ -98,6 +96,80 @@ console.log('=====================')
 if (!GROQ_API_KEY) {
   console.log('ADVERTENCIA: Falta GROQ_API_KEY — funciones de IA desactivadas, pero el bot continúa')
 }
+
+// ─── EVOLUTION API ────────────────────────────────────────────
+const EVOLUTION_URL  = process.env.EVOLUTION_URL  || 'https://poetic-enthusiasm-production.up.railway.app'
+const EVOLUTION_KEY  = process.env.EVOLUTION_KEY  || 'Terrano2024SecretKey'
+const INSTANCE_NAME  = process.env.INSTANCE_NAME  || 'bot-personal'
+const WEBHOOK_URL    = process.env.WEBHOOK_URL    || ''
+const BOT_PORT       = process.env.PORT           || 3000
+
+// Caché de JID de grupo → nombre en minúsculas
+const grupoJids = {}
+
+async function evGet(ruta) {
+  const r = await fetch(`${EVOLUTION_URL}${ruta}`, {
+    headers: { 'apikey': EVOLUTION_KEY },
+  })
+  return r.json()
+}
+
+async function evPost(ruta, body) {
+  const r = await fetch(`${EVOLUTION_URL}${ruta}`, {
+    method: 'POST',
+    headers: { 'apikey': EVOLUTION_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return r.json()
+}
+
+async function enviarTexto(chatId, texto) {
+  try {
+    await evPost(`/message/sendText/${INSTANCE_NAME}`, { number: chatId, text: texto })
+  } catch (err) { console.error('[EVO] enviarTexto:', err.message) }
+}
+
+async function enviarArchivo(chatId, filePath, caption) {
+  try {
+    const base64   = fs.readFileSync(filePath).toString('base64')
+    const fileName = path.basename(filePath)
+    const mimetype = fileName.endsWith('.xlsx')
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'application/octet-stream'
+    await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
+      number: chatId, mediatype: 'document', mimetype,
+      media: base64, fileName, caption: caption || fileName,
+    })
+  } catch (err) { console.error('[EVO] enviarArchivo:', err.message) }
+}
+
+// Objeto "client" compatible — reemplaza whatsapp-web.js sin tocar el resto del código
+const client = {
+  sendMessage: async (chatId, textOrMedia, options) => {
+    if (typeof textOrMedia === 'string') {
+      await enviarTexto(chatId, textOrMedia)
+    } else if (textOrMedia?._filePath) {
+      await enviarArchivo(chatId, textOrMedia._filePath, options?.caption)
+    }
+  },
+  getChats: async () => {
+    try {
+      const grupos = await evGet(`/group/fetchAllGroups/${INSTANCE_NAME}?getParticipants=false`)
+      return (Array.isArray(grupos) ? grupos : []).map(g => ({
+        id: { _serialized: g.id },
+        name: g.subject || '',
+        isGroup: true,
+      }))
+    } catch { return [] }
+  },
+}
+
+// Reemplazo de MessageMedia.fromFilePath — devuelve objeto con _filePath
+const MessageMedia = {
+  fromFilePath: (filePath) => ({ _filePath: filePath }),
+}
+
+// ─────────────────────────────────────────────────────────────
 
 const GROQ_URL       = 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_AUDIO_URL = 'https://api.groq.com/openai/v1/audio/transcriptions'
@@ -1648,17 +1720,7 @@ async function procesarGasto(msg, chat, archivoExcel) {
   await confirmarYGuardar(grupoId, datos, remitente, archivoExcel)
 }
 
-// ─── INICIAR CLIENTE ─────────────────────────────────────────
-const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: path.join(PROYECTO_DIR, 'session') }),
-  puppeteer: {
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
-      || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    headless: true,
-    args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-first-run','--no-zygote','--single-process'],
-  },
-  webVersionCache: { type: 'none' },
-})
+// ─── (cliente ya definido arriba con Evolution API) ──────────
 
 console.log('=========================================')
 console.log('  BOT PERSONAL')
@@ -1671,54 +1733,10 @@ for (const nombre of GRUPOS_ASISTENTE) console.log(`    - "${nombre}"`)
 console.log('  Iniciando...')
 console.log('=========================================')
 
-client.on('qr', async (qr) => {
-  console.log('\nEscanee este QR con WhatsApp > Dispositivos vinculados:')
-  qrcode.generate(qr, { small: true })
-  // Guardar QR como imagen (sirve tanto local como en Railway)
-  const qrPath = path.join(PROYECTO_DIR, 'QR_PERSONAL.png')
-  try {
-    await QRCode.toFile(qrPath, qr, { width: 400, margin: 2 })
-    console.log(`[QR] Imagen guardada: ${qrPath}`)
-  } catch {}
-  // En Railway: imprimir también como data URL para abrir en el navegador
-  if (process.env.RAILWAY_ENVIRONMENT) {
-    const dataUrl = await QRCode.toDataURL(qr, { width: 400 })
-    console.log('\n[QR] Abre esta URL en el navegador para escanear:\ndata:image/png;base64,' + dataUrl.split(',')[1].substring(0, 50) + '...')
-    console.log('[QR] URL completa guardada en datos/qr_url.txt')
-    fs.writeFileSync(path.join(GASTOS_DIR, 'qr_url.txt'), dataUrl)
-  }
-})
+// QR handler movido a inicializarEvolution()
 
 // ID del grupo Gastos — se llena al arrancar para notificaciones de chats directos
 let idGrupoNotificaciones = null
-
-client.on('ready', async () => {
-  console.log('\n=========================================')
-  console.log('  BOT PERSONAL CONECTADO Y LISTO')
-  console.log('=========================================\n')
-  console.log('[Groq] Verificando conexion...')
-  const resultado = await llamarGroq([{ role: 'user', content: 'Di solo: OK' }])
-  if (resultado?.res?.ok) {
-    console.log('[Groq] ✅ Conexion OK')
-  } else {
-    console.log(`[Groq] ❌ Error ${resultado?.res?.status}: ${resultado?.data?.error?.message}`)
-  }
-  // Buscar el grupo Gastos para enviarle notificaciones de chats directos
-  try {
-    const chats = await client.getChats()
-    const grupoGastos = chats.find(c => c.isGroup && c.name.toLowerCase() === 'gastos')
-    if (grupoGastos) {
-      idGrupoNotificaciones = grupoGastos.id._serialized
-      console.log(`[BOT] Grupo notificaciones: "${grupoGastos.name}"`)
-    } else {
-      console.log('[BOT] ⚠️ No encontré el grupo "Gastos" para notificaciones')
-    }
-  } catch (err) {
-    console.error('[BOT] Error buscando grupo Gastos:', err.message)
-  }
-})
-
-client.on('auth_failure', (msg) => console.error('Error autenticacion:', msg))
 
 // ─── ROUTER GENERAL ──────────────────────────────────────────
 async function routearMensaje(msg, chat) {
@@ -1733,55 +1751,107 @@ async function routearMensaje(msg, chat) {
   if (GRUPOS_ASISTENTE.includes(nombre)) { await procesarAsistente(msg, chat); return }
 }
 
-// ─── MENSAJES DE OTROS EN GRUPOS ─────────────────────────────
-client.on('message', async (msg) => {
-  if (msg.fromMe) return
-  if (!msg.from.endsWith('@g.us')) return
-  if (msg.from.includes('broadcast')) return
+// ─── OBTENER NOMBRE DE GRUPO POR JID ─────────────────────────
+async function obtenerNombreGrupo(jid) {
+  if (grupoJids[jid]) return grupoJids[jid]
   try {
-    const chat = await msg.getChat()
-    // En grupos "solo dueño", solo procesar el comando "enviar resumen"
-    if (GRUPOS_SOLO_DUENO.includes(chat.name.toLowerCase())) {
-      const txt = (msg.body || '').trim().toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      if (/^enviar\s+resumen$|^\/resumen$/.test(txt)) {
-        await routearMensaje(msg, chat)
-      }
-      return
-    }
-    await routearMensaje(msg, chat)
-  } catch (err) {
-    console.error('[GRUPO] Error:', err.message)
-  }
-})
+    const info = await evGet(`/group/findGroupInfos/${INSTANCE_NAME}?groupJid=${encodeURIComponent(jid)}`)
+    const nombre = (info?.subject || '').toLowerCase()
+    if (nombre) grupoJids[jid] = nombre
+    return nombre
+  } catch { return '' }
+}
 
-// ─── MENSAJES PROPIOS DEL DUEÑO (grupos Y chats directos) ────
-client.on('message_create', async (msg) => {
-  if (!msg.fromMe) return
-  const destino = msg.to || msg.from
-  const body = msg.body || ''
-  if (['💸','💰','❓','📊','❌','✅','⚠','🔔','📅','🗑️','✏️','🎙️','📂','📌','🍽️','📋','🚀','⏳','💡','⏱️','🔴','🟢','🟠','🔵','🔍','🔎'].some(e => body.startsWith(e))) return
-  // Chats directos monitoreados
-  if (destino.endsWith('@c.us')) {
-    try {
-      const chat = await msg.getChat()
-      const nombre = chat.name.toLowerCase()
-      if (Object.keys(CHATS_DIRECTOS_GASTOS).includes(nombre)) {
-        console.log(`[BOT] Mensaje del dueño en chat directo "${chat.name}": ${body}`)
-        await routearMensaje(msg, chat)
-      }
-    } catch (err) {
-      console.error('[CHAT] Error message_create:', err.message)
-    }
-    return
-  }
-  if (!destino.endsWith('@g.us')) return
+// ─── EXPRESS WEBHOOK SERVER ───────────────────────────────────
+const app = express()
+app.use(express.json({ limit: '50mb' }))
+
+app.get('/', (_req, res) => res.send('Bot Personal OK ✅'))
+
+app.post('/webhook', async (req, res) => {
+  res.sendStatus(200)  // responder rápido a Evolution API
   try {
-    const chat = await msg.getChat()
-    console.log(`[BOT] Mensaje del dueño: ${body}`)
-    await routearMensaje(msg, chat)
+    const payload = req.body
+    if (payload.event !== 'messages.upsert') return
+    const data = payload.data
+    if (!data?.key) return
+
+    const { key, message, messageType, pushName } = data
+    const chatId  = key.remoteJid
+    const fromMe  = key.fromMe === true
+    const isGroup = chatId?.endsWith('@g.us')
+
+    if (!chatId) return
+    if (chatId === 'status@broadcast') return
+    if (chatId.includes('broadcast')) return
+
+    // Resolver nombre del chat
+    let chatName = ''
+    if (isGroup) {
+      chatName = await obtenerNombreGrupo(chatId)
+    } else {
+      // Chat directo: buscar en caché por JID o usar pushName
+      chatName = grupoJids[chatId] || (pushName || '').toLowerCase()
+    }
+
+    // Texto del mensaje
+    const bodyText = message?.conversation
+      || message?.extendedTextMessage?.text
+      || ''
+
+    // Tipo de media
+    const esAudio  = messageType === 'audioMessage' || messageType === 'pttMessage'
+    const esImagen = messageType === 'imageMessage'
+    const tieneMedia = esAudio || esImagen || messageType === 'documentMessage'
+
+    // Objeto compatible con el código existente
+    const msgObj = {
+      body:    bodyText,
+      fromMe,
+      from:    chatId,
+      to:      fromMe ? chatId : null,
+      author:  key.participant || key.remoteJid,
+      hasMedia: tieneMedia,
+      type:    messageType === 'pttMessage' ? 'ptt'
+             : messageType === 'audioMessage' ? 'audio'
+             : messageType === 'imageMessage' ? 'image' : 'chat',
+      async downloadMedia() {
+        const r = await evPost(`/chat/getBase64FromMediaMessage/${INSTANCE_NAME}`, { message: data })
+        return { data: r.base64, mimetype: r.mimetype || 'audio/ogg' }
+      },
+      async getContact() { return { pushname: pushName, name: pushName } },
+      async getChat()    { return chatObj },
+    }
+    const chatObj = {
+      id:      { _serialized: chatId },
+      name:    chatName,
+      isGroup,
+    }
+
+    const EMOJIS_BOT = ['💸','💰','❓','📊','❌','✅','⚠','🔔','📅','🗑️','✏️','🎙️','📂','📌','🍽️','📋','🚀','⏳','💡','⏱️','🔴','🟢','🟠','🔵','🔍','🔎']
+    const esRespuestaBot = EMOJIS_BOT.some(e => bodyText.startsWith(e))
+
+    if (!fromMe && isGroup) {
+      // Mensajes de otros en grupos
+      if (GRUPOS_SOLO_DUENO.includes(chatName)) {
+        const txt = bodyText.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        if (/^enviar\s+resumen$|^\/resumen$/.test(txt)) await routearMensaje(msgObj, chatObj)
+        return
+      }
+      await routearMensaje(msgObj, chatObj)
+    } else if (fromMe && isGroup && !esRespuestaBot) {
+      // Mensajes del dueño en grupos
+      console.log(`[BOT] Mensaje del dueño: ${bodyText}`)
+      await routearMensaje(msgObj, chatObj)
+    } else if (fromMe && !isGroup && !esRespuestaBot) {
+      // Mensajes del dueño en chats directos
+      if (Object.keys(CHATS_DIRECTOS_GASTOS).some(n => chatName === n)) {
+        console.log(`[BOT] Mensaje del dueño en chat directo "${chatName}": ${bodyText}`)
+        await routearMensaje(msgObj, chatObj)
+      }
+    }
   } catch (err) {
-    console.error('[GRUPO] Error message_create:', err.message)
+    console.error('[WEBHOOK] Error:', err.message)
   }
 })
 
@@ -2900,4 +2970,118 @@ async function verificarPagoDesdeImagen(msg, chat, archivoExcel) {
 
 // ════════════════════════════════════════════════════════════
 
-client.initialize()
+// ─── INICIALIZACIÓN ───────────────────────────────────────────
+async function inicializarEvolution() {
+  // 1. Crear instancia si no existe
+  try {
+    const estado = await evGet(`/instance/connectionState/${INSTANCE_NAME}`)
+    if (estado?.instance?.state === 'open') {
+      console.log('[EVO] ✅ Instancia ya conectada')
+    } else {
+      // Intentar crear
+      try {
+        await evPost('/instance/create', {
+          instanceName: INSTANCE_NAME,
+          qrcode: true,
+          integration: 'WHATSAPP-BAILEYS',
+        })
+        console.log('[EVO] Instancia creada:', INSTANCE_NAME)
+      } catch {
+        console.log('[EVO] La instancia ya existe, continuando...')
+      }
+
+      // Esperar QR y escanearlo
+      console.log('\n[QR] Esperando QR de WhatsApp...')
+      let intentosQR = 0
+      while (intentosQR < 40) {
+        await new Promise(r => setTimeout(r, 3000))
+        intentosQR++
+        try {
+          const conexion = await evGet(`/instance/connect/${INSTANCE_NAME}`)
+          if (conexion?.base64) {
+            // Guardar QR como base64 URL
+            const dataUrl = `data:image/png;base64,${conexion.base64}`
+            fs.writeFileSync(path.join(GASTOS_DIR, 'qr_url.txt'), dataUrl)
+            console.log('[QR] ✅ QR guardado en datos/qr_url.txt')
+            console.log('[QR] Abra ese archivo y escanéelo con WhatsApp > Dispositivos vinculados')
+          } else if (conexion?.code) {
+            // Generar imagen del QR desde el código
+            try {
+              await QRCode.toFile(path.join(PROYECTO_DIR, 'QR_PERSONAL.png'), conexion.code, { width: 400 })
+              const dataUrl = await QRCode.toDataURL(conexion.code, { width: 400 })
+              fs.writeFileSync(path.join(GASTOS_DIR, 'qr_url.txt'), dataUrl)
+              console.log('[QR] ✅ QR guardado — ábralo en datos/qr_url.txt')
+            } catch {}
+          }
+          // Verificar si ya conectó
+          const nuevoEstado = await evGet(`/instance/connectionState/${INSTANCE_NAME}`)
+          if (nuevoEstado?.instance?.state === 'open') {
+            console.log('[EVO] ✅ WhatsApp conectado!')
+            break
+          }
+        } catch (err) {
+          console.log(`[QR] Espera... (intento ${intentosQR})`)
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[EVO] Error en inicialización:', err.message)
+  }
+
+  // 2. Configurar webhook si hay URL definida
+  if (WEBHOOK_URL) {
+    try {
+      await evPost(`/webhook/set/${INSTANCE_NAME}`, {
+        webhook: {
+          enabled: true,
+          url: `${WEBHOOK_URL}/webhook`,
+          byEvents: true,
+          base64: false,
+          events: ['MESSAGES_UPSERT'],
+        },
+      })
+      console.log(`[EVO] Webhook configurado → ${WEBHOOK_URL}/webhook`)
+    } catch (err) {
+      console.error('[EVO] Error configurando webhook:', err.message)
+    }
+  } else {
+    console.log('[EVO] ⚠️  WEBHOOK_URL no definida — configure el webhook manualmente en Evolution API')
+  }
+
+  // 3. Cargar JIDs de grupos
+  try {
+    const grupos = await evGet(`/group/fetchAllGroups/${INSTANCE_NAME}?getParticipants=false`)
+    if (Array.isArray(grupos)) {
+      for (const g of grupos) {
+        grupoJids[g.id] = (g.subject || '').toLowerCase()
+      }
+      console.log(`[EVO] ${grupos.length} grupos cargados en caché`)
+    }
+  } catch (err) {
+    console.log('[EVO] No se pudo cargar lista de grupos (normal si aún no está conectado)')
+  }
+
+  // 4. Verificar Groq
+  const resultado = await llamarGroq([{ role: 'user', content: 'Di solo: OK' }])
+  if (resultado?.res?.ok) console.log('[Groq] ✅ Conexión OK')
+  else console.log(`[Groq] ❌ Error: ${resultado?.data?.error?.message || 'sin respuesta'}`)
+
+  // 5. Grupo notificaciones
+  try {
+    const chats = await client.getChats()
+    const grupoGastos = chats.find(c => c.name.toLowerCase() === 'gastos')
+    if (grupoGastos) {
+      idGrupoNotificaciones = grupoGastos.id._serialized
+      console.log(`[BOT] Grupo notificaciones: "${grupoGastos.name}"`)
+    }
+  } catch {}
+}
+
+// ─── ARRANQUE ─────────────────────────────────────────────────
+app.listen(BOT_PORT, async () => {
+  console.log(`\n[BOT] Webhook server en puerto ${BOT_PORT}`)
+  await inicializarEvolution()
+  console.log('\n=========================================')
+  console.log('  BOT PERSONAL LISTO')
+  console.log('=========================================\n')
+})
