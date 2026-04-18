@@ -1,5 +1,6 @@
 [build]
 builder = "DOCKERFILE"
+buildArgs = { GROQ_API_KEY = "${{GROQ_API_KEY}}", PROYECTO_DIR = "${{PROYECTO_DIR}}", WEBHOOK_URL = "${{WEBHOOK_URL}}" }
 
 [deploy]
 startCommand = "node bot.js"
