@@ -35,8 +35,12 @@ const TIMER_FILE          = path.join(GASTOS_DIR, 'timer_activo.json')
 const TIEMPOS_EXCEL       = path.join(GASTOS_DIR, 'tiempos.xlsx')
 
 // Número de Aura (empleada del hogar) — recibe comprobante cuando se registra pago
-const NUMERO_AURA     = '573146425027'
-const PAGOS_AURA_EXCEL = path.join(GASTOS_DIR, 'pagos_aura.xlsx')
+const NUMERO_AURA      = '573146425027'
+const PAGOS_AURA_EXCEL  = path.join(GASTOS_DIR, 'pagos_aura.xlsx')
+
+// Número de Chila (Finanzas Priority) — recibe comprobante cuando se registra pago
+const NUMERO_CHILA      = '573216412940'
+const PAGOS_CHILA_EXCEL = path.join(GASTOS_DIR, 'pagos_chila.xlsx')
 
 // Archivos que se espejan automáticamente a Finanzas Priority
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
@@ -63,6 +67,7 @@ const GRUPOS_GASTOS = {
   'finanzas priority ai':       path.join(PROYECTO_DIR, 'datos', 'finanzas_priority.xlsx'),
   'aura casa ai':               path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'aura casa':                  path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
+  'chila pagos ai':             path.join(PROYECTO_DIR, 'datos', 'pagos_chila.xlsx'),
 }
 
 // Conversaciones directas (chats individuales) que el bot también monitorea
@@ -805,34 +810,37 @@ async function guardarEnExcel(datos, remitente, archivoExcel) {
 }
 
 // ─── CONFIRMAR Y GUARDAR ─────────────────────────────────────
-// ─── REENVIAR COMPROBANTE DE PAGO A AURA ─────────────────────
+// enviarComprobanteAura usa la función genérica
 async function enviarComprobanteAura(grupoId) {
+  await enviarComprobante(grupoId, NUMERO_AURA, 'Aura', PAGOS_AURA_EXCEL)
+}
+
+// ─── REENVIAR COMPROBANTE A PERSONA (genérico) ───────────────
+async function enviarComprobante(grupoId, numero, nombreExcel, archivoDestino) {
   const guardada = lastImagePerGroup[grupoId]
   if (!guardada) {
-    console.log('[AURA] No hay imagen guardada para este grupo')
     await enviarTexto(grupoId, '⚠️ Gasto guardado, pero no encontré ningún comprobante. Envíe primero la imagen y luego el audio.')
     return
   }
   if (Date.now() - guardada.timestamp > 20 * 60 * 1000) {
-    console.log('[AURA] Imagen expirada')
     await enviarTexto(grupoId, '⚠️ La imagen del comprobante expiró (más de 20 min). Envíela de nuevo junto con el audio.')
     return
   }
   try {
     const media = await guardada.msg.downloadMedia()
-    if (!media?.data) { console.log('[AURA] No se pudo obtener base64 de la imagen'); return }
+    if (!media?.data) return
     await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
-      number: NUMERO_AURA,
+      number: numero,
       mediatype: 'image',
       mimetype: media.mimetype || 'image/jpeg',
       media: media.data,
       caption: '📎 Comprobante de pago',
     })
     delete lastImagePerGroup[grupoId]
-    console.log('[AURA] Comprobante enviado a', NUMERO_AURA)
-    await enviarTexto(grupoId, '✅ Comprobante enviado a Aura.')
+    console.log(`[COMPROBANTE] Enviado a ${numero}`)
+    await enviarTexto(grupoId, `✅ Comprobante enviado a ${nombreExcel}.`)
   } catch (err) {
-    console.error('[AURA] Error enviando comprobante:', err.message)
+    console.error('[COMPROBANTE] Error:', err.message)
   }
 }
 
@@ -857,6 +865,19 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
       `$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n\n` +
       `${fechaTag}`
     )
+    // Chila: espejo en pagos_chila.xlsx + comprobante
+    if (/\bchila\b/i.test(datos.descripcion)) {
+      try {
+        if (archivoExcel !== PAGOS_CHILA_EXCEL) {
+          const listaChila = cargarDatos(PAGOS_CHILA_EXCEL)
+          const numChila   = listaChila.length > 0 ? Math.max(...listaChila.map(e => e.numero || 0)) + 1 : 1
+          listaChila.push({ ...datos, id: (Date.now()+3).toString(), numero: numChila })
+          guardarDatos(listaChila, PAGOS_CHILA_EXCEL)
+          await regenerarExcel(PAGOS_CHILA_EXCEL)
+        }
+      } catch (err) { console.error('[CHILA] Error espejo:', err.message) }
+      await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila', PAGOS_CHILA_EXCEL)
+    }
     return
   }
 
@@ -1424,12 +1445,11 @@ async function procesarGasto(msg, chat, archivoExcel) {
 
   // ── Imagen recibida ──────────────────────────────────────────
   if (msg.hasMedia && msg.type === 'image') {
+    // Siempre guardar como posible comprobante (Aura, Chila, etc.)
+    lastImagePerGroup[grupoId] = { msg, timestamp: Date.now() }
+    console.log(`[IMG] Comprobante guardado para grupo ${grupoId.slice(-15)}`)
     if (GRUPOS_VERIFICACION_PAGO.includes(chat.name.toLowerCase())) {
       await verificarPagoDesdeImagen(msg, chat, archivoExcel)
-    } else {
-      // Guardar como posible comprobante de pago (ej: transferencia a Aura)
-      lastImagePerGroup[grupoId] = { msg, timestamp: Date.now() }
-      console.log(`[IMG] Comprobante guardado para grupo ${grupoId.slice(-15)}`)
     }
     return
   }
@@ -2000,6 +2020,11 @@ async function manejarWebhook(req, res) {
         // Chat directo con Aura → acceso a pagos_aura.xlsx
         chatObj.name = 'aura casa ai'
         console.log(`[BOT] Dueño en chat Aura: ${bodyText}`)
+        await routearMensaje(msgObj, chatObj)
+      } else if (chatId === NUMERO_CHILA + '@s.whatsapp.net') {
+        // Chat directo con Chila → acceso a pagos_chila.xlsx
+        chatObj.name = 'chila pagos ai'
+        console.log(`[BOT] Dueño en chat Chila: ${bodyText}`)
         await routearMensaje(msgObj, chatObj)
       } else if (Object.keys(CHATS_DIRECTOS_GASTOS).some(n => chatName === n)) {
         console.log(`[BOT] Dueño en chat directo "${chatName}": ${bodyText}`)
