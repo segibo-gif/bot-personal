@@ -1366,6 +1366,7 @@ function convertirNumerosEscritos(texto) {
 async function procesarGasto(msg, chat, archivoExcel) {
   const grupoId = chat.id._serialized
   let texto = msg.body || ''
+  console.log(`[GASTO] txt="${texto}" archivo=${archivoExcel.split('/').pop()}`)
 
   // ── Imagen en grupo de verificación (Finanzas Priority AI) ──
   if (msg.hasMedia && msg.type === 'image' && GRUPOS_VERIFICACION_PAGO.includes(chat.name.toLowerCase())) {
@@ -1502,12 +1503,13 @@ async function procesarGasto(msg, chat, archivoExcel) {
   }
 
   if (!catCorr) {
-    // "mover X a Y" / "moverlo a Y"
-    const m1c = texto.match(new RegExp(`(?:mover?|pasarlo?|llevarlo?)(?:\\s+.+?)?\\s+a\\s+${CATS_RE}`, 'i'))
+    // "mover X a Y" / "moverlo a Y" / "pasar X a Y" / "llevar X a Y"
+    const m1c = texto.match(new RegExp(`(?:mover?|pasar(?:lo)?|llevar(?:lo)?)\\s+(?:el\\s+)?(.+?)\\s+a\\s+${CATS_RE}`, 'i'))
     if (m1c) {
-      // Si dice "moverlo" sin descripción, usar el último gasto
-      descCorr = 'ultimo'
-      catCorr  = m1c[1]
+      const desc = m1c[1].trim()
+      // Si no hay descripción real (solo "lo", "eso", etc.) → usar el último gasto
+      descCorr = /^(lo|eso|ese|esa|este|esta)$/i.test(desc) ? 'ultimo' : desc
+      catCorr  = m1c[2]
     }
   }
 
