@@ -1881,7 +1881,7 @@ async function manejarWebhook(req, res) {
       await routearMensaje(msgObj, chatObj)
     }
   } catch (err) {
-    console.error('[WEBHOOK] Error:', err.message)
+    console.error('[WEBHOOK] Error:', err.message, '\n', err.stack)
   }
 }
 
@@ -2000,8 +2000,15 @@ Responde SOLO con JSON válido:`
 // ─── MÓDULO PROYECTOS / PENDIENTES / IDEAS ───────────────────
 
 function cargarProyectos() {
-  try { return JSON.parse(fs.readFileSync(PROYECTOS_FILE, 'utf-8')) }
-  catch { return [] }
+  try {
+    const raw = fs.readFileSync(PROYECTOS_FILE, 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      console.warn('[PROYECTOS] Archivo no es array, reseteando. Tipo:', typeof parsed, '| Inicio:', raw.substring(0, 80))
+      return []
+    }
+    return parsed
+  } catch { return [] }
 }
 
 function guardarProyectos(lista) {
