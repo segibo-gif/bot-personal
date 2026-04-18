@@ -2455,7 +2455,7 @@ async function procesarAsistente(msg, chat) {
   // (El handler de ver agenda está unificado con esVerAgenda más abajo)
 
   // ── Comandos: ver lista de proyectos/pendientes/ideas/agenda ──
-  const _verbo = /(ver|muest|lista|cual|que\s+(hay|tengo)|dame|quiero|tien|envi|mand|pas[ae]me|pasa|comp[aá]rt|sube)/
+  const _verbo = /(ver|muest|mostr|lista|cual|que\s+(hay|tengo)|dame|quiero|tien|envi|mand|pas[ae]me|pasa|comp[aá]rt|sube|dime|digame|dígame)/
   const esVerAll  = txLow === '/todo'
     || /^todo$/.test(txLow)
     || /\blista\s+completa\b/.test(txLow)
