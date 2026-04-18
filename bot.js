@@ -1502,7 +1502,7 @@ async function procesarGasto(msg, chat, archivoExcel) {
   // ── Enviar Excel ─────────────────────────────────────────
   const _t = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const _tieneArchivo = /\b(excel|archivo|planilla|hoja)\b/.test(_t)
-  const _tieneVerbo   = /\benv[ií]|envi[aeo]|mand[aeo]|pas[ao]|comparte|adjunta|necesito|quiero|dam[ae]|dem[ae]|muestrame|ver\b/.test(_t)
+  const _tieneVerbo   = /\benv[ií]|envi[aeo]|mand[aeo]|pas[ao]|comparte|adjunta|necesito|quiero|dam[ae]|dem[ae]|muest|mostr|ver\b/.test(_t)
   const esEnviarExcel = (_tieneArchivo && _tieneVerbo)
     || /^\/excel$/i.test(texto.trim())
     || /\b(excel|archivo).*(actualizado|al\s+día|por\s+favor|porfavor)/i.test(texto)
@@ -1772,11 +1772,6 @@ async function procesarGasto(msg, chat, archivoExcel) {
     return
   }
 
-  // ── Pagos a Aura → siempre categoría Hogar ───────────────────
-  if (/\baura\b/i.test(texto) || /\baura\b/i.test(datos.descripcion)) {
-    datos.categoria = 'Hogar'
-  }
-
   // ── Categoría fija por grupo (ej: Abono en Pago Stella/Juancho) ──
   const categoriaFija = GRUPOS_CATEGORIA_FIJA[chat.name.toLowerCase()]
   if (categoriaFija) {
@@ -1823,6 +1818,11 @@ async function procesarGasto(msg, chat, archivoExcel) {
   if (categoriaAprendida) {
     datos.categoria = categoriaAprendida
     console.log(`[APRENDIZAJE] Usando categoría aprendida: "${datos.descripcion}" → ${categoriaAprendida}`)
+  }
+
+  // ── Pagos a Aura → siempre Hogar (tiene prioridad sobre aprendizaje) ──
+  if (/\baura\b/i.test(texto) || /\baura\b/i.test(datos.descripcion)) {
+    datos.categoria = 'Hogar'
   }
 
   // ── Obtener remitente (una sola vez) ──────────────────────
