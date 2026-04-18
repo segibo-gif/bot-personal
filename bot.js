@@ -802,8 +802,16 @@ async function guardarEnExcel(datos, remitente, archivoExcel) {
 // ─── REENVIAR COMPROBANTE DE PAGO A AURA ─────────────────────
 async function enviarComprobanteAura(grupoId) {
   const guardada = lastImagePerGroup[grupoId]
-  if (!guardada) { console.log('[AURA] No hay imagen guardada para este grupo'); return }
-  if (Date.now() - guardada.timestamp > 20 * 60 * 1000) { console.log('[AURA] Imagen expirada'); return }
+  if (!guardada) {
+    console.log('[AURA] No hay imagen guardada para este grupo')
+    await enviarTexto(grupoId, '⚠️ Gasto guardado, pero no encontré ningún comprobante. Envíe primero la imagen y luego el audio.')
+    return
+  }
+  if (Date.now() - guardada.timestamp > 20 * 60 * 1000) {
+    console.log('[AURA] Imagen expirada')
+    await enviarTexto(grupoId, '⚠️ La imagen del comprobante expiró (más de 20 min). Envíela de nuevo junto con el audio.')
+    return
+  }
   try {
     const media = await guardada.msg.downloadMedia()
     if (!media?.data) { console.log('[AURA] No se pudo obtener base64 de la imagen'); return }
@@ -812,7 +820,11 @@ async function enviarComprobanteAura(grupoId) {
     const grupoAura = (Array.isArray(grupos) ? grupos : []).find(g =>
       (g.subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('aura casa')
     )
-    if (!grupoAura) { console.log('[AURA] No encontré el grupo "Aura Casa AI"'); return }
+    if (!grupoAura) {
+      console.log('[AURA] No encontré el grupo "Aura Casa AI"')
+      await enviarTexto(grupoId, '⚠️ Gasto guardado, pero no encontré el grupo *"Aura Casa AI"* para enviarle el comprobante. Créelo en WhatsApp con el bot y Aura adentro.')
+      return
+    }
     await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
       number: normalizarChatId(grupoAura.id),
       mediatype: 'image',
@@ -822,6 +834,7 @@ async function enviarComprobanteAura(grupoId) {
     })
     delete lastImagePerGroup[grupoId]
     console.log('[AURA] Comprobante enviado a', grupoAura.subject)
+    await enviarTexto(grupoId, '✅ Comprobante enviado a Aura.')
   } catch (err) {
     console.error('[AURA] Error enviando comprobante:', err.message)
   }
