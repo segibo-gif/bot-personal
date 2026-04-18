@@ -156,6 +156,9 @@ const DUENO_JID      = NUMERO_DUENO + '@s.whatsapp.net'
 // Caché de JID de grupo → nombre en minúsculas
 const grupoJids = {}
 
+// Última imagen enviada por el dueño en cada grupo (para reenvío de comprobantes)
+const lastImagePerGroup = {}  // { [grupoId]: { msg, timestamp } }
+
 async function evGet(ruta) {
   const r = await fetch(`${EVOLUTION_URL}${ruta}`, {
     headers: { 'apikey': EVOLUTION_KEY },
@@ -796,6 +799,34 @@ async function guardarEnExcel(datos, remitente, archivoExcel) {
 }
 
 // ─── CONFIRMAR Y GUARDAR ─────────────────────────────────────
+// ─── REENVIAR COMPROBANTE DE PAGO A AURA ─────────────────────
+async function enviarComprobanteAura(grupoId) {
+  const guardada = lastImagePerGroup[grupoId]
+  if (!guardada) { console.log('[AURA] No hay imagen guardada para este grupo'); return }
+  if (Date.now() - guardada.timestamp > 20 * 60 * 1000) { console.log('[AURA] Imagen expirada'); return }
+  try {
+    const media = await guardada.msg.downloadMedia()
+    if (!media?.data) { console.log('[AURA] No se pudo obtener base64 de la imagen'); return }
+    // Buscar grupo/chat "Aura Casa AI"
+    const grupos = await evGet(`/group/fetchAllGroups/${INSTANCE_NAME}?getParticipants=false`)
+    const grupoAura = (Array.isArray(grupos) ? grupos : []).find(g =>
+      (g.subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('aura casa')
+    )
+    if (!grupoAura) { console.log('[AURA] No encontré el grupo "Aura Casa AI"'); return }
+    await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
+      number: normalizarChatId(grupoAura.id),
+      mediatype: 'image',
+      mimetype: media.mimetype || 'image/jpeg',
+      media: media.data,
+      caption: '📎 Comprobante de pago',
+    })
+    delete lastImagePerGroup[grupoId]
+    console.log('[AURA] Comprobante enviado a', grupoAura.subject)
+  } catch (err) {
+    console.error('[AURA] Error enviando comprobante:', err.message)
+  }
+}
+
 async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
   try {
     await guardarEnExcel(datos, remitente, archivoExcel)
@@ -829,6 +860,10 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
     `${signo}$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n\n` +
     `📂 ${datos.categoria}${subcat}${numTag}`
   )
+  // Si menciona a Aura → reenviar comprobante de pago a su grupo
+  if (/\baura\b/i.test(datos.descripcion)) {
+    await enviarComprobanteAura(grupoId)
+  }
 }
 
 // ─── PARSEAR COMANDO DE EDICIÓN ──────────────────────────────
@@ -1368,9 +1403,15 @@ async function procesarGasto(msg, chat, archivoExcel) {
   let texto = msg.body || ''
   console.log(`[GASTO] txt="${texto}" archivo=${archivoExcel.split('/').pop()}`)
 
-  // ── Imagen en grupo de verificación (Finanzas Priority AI) ──
-  if (msg.hasMedia && msg.type === 'image' && GRUPOS_VERIFICACION_PAGO.includes(chat.name.toLowerCase())) {
-    await verificarPagoDesdeImagen(msg, chat, archivoExcel)
+  // ── Imagen recibida ──────────────────────────────────────────
+  if (msg.hasMedia && msg.type === 'image') {
+    if (GRUPOS_VERIFICACION_PAGO.includes(chat.name.toLowerCase())) {
+      await verificarPagoDesdeImagen(msg, chat, archivoExcel)
+    } else {
+      // Guardar como posible comprobante de pago (ej: transferencia a Aura)
+      lastImagePerGroup[grupoId] = { msg, timestamp: Date.now() }
+      console.log(`[IMG] Comprobante guardado para grupo ${grupoId.slice(-15)}`)
+    }
     return
   }
 
@@ -1723,6 +1764,11 @@ async function procesarGasto(msg, chat, archivoExcel) {
       `• _"gasté 50 en gasolina"_`
     )
     return
+  }
+
+  // ── Pagos a Aura → siempre categoría Hogar ───────────────────
+  if (/\baura\b/i.test(texto) || /\baura\b/i.test(datos.descripcion)) {
+    datos.categoria = 'Hogar'
   }
 
   // ── Categoría fija por grupo (ej: Abono en Pago Stella/Juancho) ──
