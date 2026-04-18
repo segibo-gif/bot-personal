@@ -35,39 +35,53 @@ const TIMER_FILE          = path.join(GASTOS_DIR, 'timer_activo.json')
 const TIEMPOS_EXCEL       = path.join(GASTOS_DIR, 'tiempos.xlsx')
 
 const GRUPOS_GASTOS = {
-  'gastos':                  path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
-  'gastos personales':       path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
-  'gastos empresa':          path.join(PROYECTO_DIR, 'datos', 'gastos_empresa.xlsx'),
-  'pago stella / juancho':   path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
-  'pago stella/juancho':     path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
+  'gastos':                     path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
+  'gastos personales':          path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
+  'gastos personales ai':       path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
+  'gastos empresa':             path.join(PROYECTO_DIR, 'datos', 'gastos_empresa.xlsx'),
+  'gastos empresa ai':          path.join(PROYECTO_DIR, 'datos', 'gastos_empresa.xlsx'),
+  'pago stella / juancho':      path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
+  'pago stella/juancho':        path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
+  'pago stella / juancho ai':   path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
+  'pago stella/juancho ai':     path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
   'finanzas priority ai':       path.join(PROYECTO_DIR, 'datos', 'finanzas_priority.xlsx'),
 }
 
 // Conversaciones directas (chats individuales) que el bot también monitorea
 const CHATS_DIRECTOS_GASTOS = {
-  'pr beatriz produccion':  path.join(PROYECTO_DIR, 'datos', 'pagos_beatriz.xlsx'),
-  'pr beatriz producción':  path.join(PROYECTO_DIR, 'datos', 'pagos_beatriz.xlsx'),
+  'pr beatriz produccion':     path.join(PROYECTO_DIR, 'datos', 'pagos_beatriz.xlsx'),
+  'pr beatriz producción':     path.join(PROYECTO_DIR, 'datos', 'pagos_beatriz.xlsx'),
+  'pr beatriz produccion ai':  path.join(PROYECTO_DIR, 'datos', 'pagos_beatriz.xlsx'),
+  'pr beatriz producción ai':  path.join(PROYECTO_DIR, 'datos', 'pagos_beatriz.xlsx'),
 }
 
 // Grupos donde el bot SOLO escucha al dueño — ignora mensajes de los demás
 const GRUPOS_SOLO_DUENO = [
   'pago stella / juancho',
   'pago stella/juancho',
+  'pago stella / juancho ai',
+  'pago stella/juancho ai',
   'pr beatriz produccion',
   'pr beatriz producción',
+  'pr beatriz produccion ai',
+  'pr beatriz producción ai',
   'finanzas priority ai',
 ]
 
 // Grupos/chats con categoría fija — todo va a esa categoría sin preguntar
 const GRUPOS_CATEGORIA_FIJA = {
-  'pago stella / juancho':  'Abono',
-  'pago stella/juancho':    'Abono',
-  'pr beatriz produccion':  'Abono',
-  'pr beatriz producción':  'Abono',
+  'pago stella / juancho':     'Abono',
+  'pago stella/juancho':       'Abono',
+  'pago stella / juancho ai':  'Abono',
+  'pago stella/juancho ai':    'Abono',
+  'pr beatriz produccion':     'Abono',
+  'pr beatriz producción':     'Abono',
+  'pr beatriz produccion ai':  'Abono',
+  'pr beatriz producción ai':  'Abono',
   'finanzas priority ai':      'Pagos',
 }
 
-const GRUPOS_ASISTENTE = ['mi asistente']
+const GRUPOS_ASISTENTE = ['mi asistente', 'mi asistente ai']
 
 // ─── CATEGORÍAS ──────────────────────────────────────────────
 // El bot asigna automáticamente según palabras clave conocidas.
