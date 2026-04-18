@@ -856,53 +856,52 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
     }
     return
   }
-  // Mensaje especial para grupos de abono
+  // ── Mensaje de confirmación ───────────────────────────────────
   if (datos.categoria === 'Abono') {
-    const numTag    = datos._numero ? `#${datos._numero}` : ''
-    const fechaTag  = datos.fechaAbono ? `📂 ${datos.fechaAbono} · ${numTag}` : `📂 ${numTag}`
+    const numTag   = datos._numero ? `#${datos._numero}` : ''
+    const fechaTag = datos.fechaAbono ? `📂 ${datos.fechaAbono} · ${numTag}` : `📂 ${numTag}`
     await client.sendMessage(grupoId,
       `💸 *Abono registrado*\n\n` +
       `$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n\n` +
       `${fechaTag}`
     )
-    // Chila: espejo en pagos_chila.xlsx + comprobante
-    if (/\bchila\b/i.test(datos.descripcion)) {
-      try {
-        if (archivoExcel !== PAGOS_CHILA_EXCEL) {
-          const listaChila = cargarDatos(PAGOS_CHILA_EXCEL)
-          const numChila   = listaChila.length > 0 ? Math.max(...listaChila.map(e => e.numero || 0)) + 1 : 1
-          listaChila.push({ ...datos, id: (Date.now()+3).toString(), numero: numChila })
-          guardarDatos(listaChila, PAGOS_CHILA_EXCEL)
-          await regenerarExcel(PAGOS_CHILA_EXCEL)
-        }
-      } catch (err) { console.error('[CHILA] Error espejo:', err.message) }
-      await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila', PAGOS_CHILA_EXCEL)
-    }
-    return
+  } else {
+    const emoji  = datos.tipo === 'ingreso' ? '💰' : '💸'
+    const signo  = datos.tipo === 'ingreso' ? '+' : '-'
+    const subcat = (datos.categoria === 'Hijos' && datos.subcategoria) ? ` › ${datos.subcategoria}` : ''
+    const numTag = datos._numero ? ` | #${datos._numero}` : ''
+    await client.sendMessage(grupoId,
+      `${emoji} *Gasto guardado*\n\n` +
+      `${signo}$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n\n` +
+      `📂 ${datos.categoria}${subcat}${numTag}`
+    )
   }
 
-  const emoji  = datos.tipo === 'ingreso' ? '💰' : '💸'
-  const signo  = datos.tipo === 'ingreso' ? '+' : '-'
-  const subcat = (datos.categoria === 'Hijos' && datos.subcategoria) ? ` › ${datos.subcategoria}` : ''
-  const numTag = datos._numero ? ` | #${datos._numero}` : ''
-  await client.sendMessage(grupoId,
-    `${emoji} *Gasto guardado*\n\n` +
-    `${signo}$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n\n` +
-    `📂 ${datos.categoria}${subcat}${numTag}`
-  )
-  // Si menciona a Aura → guardar en pagos_aura.xlsx y enviar comprobante
+  // ── Espejo + comprobante (aplica para cualquier categoría) ────
   if (/\baura\b/i.test(datos.descripcion)) {
     try {
-      // Espejo en pagos_aura.xlsx (solo si no venimos ya de ese archivo)
       if (archivoExcel !== PAGOS_AURA_EXCEL) {
-        const listaAura = cargarDatos(PAGOS_AURA_EXCEL)
-        const numAura   = listaAura.length > 0 ? Math.max(...listaAura.map(e => e.numero || 0)) + 1 : 1
-        listaAura.push({ ...datos, id: (Date.now()+2).toString(), numero: numAura })
-        guardarDatos(listaAura, PAGOS_AURA_EXCEL)
+        const lista = cargarDatos(PAGOS_AURA_EXCEL)
+        const num   = lista.length > 0 ? Math.max(...lista.map(e => e.numero || 0)) + 1 : 1
+        lista.push({ ...datos, id: (Date.now()+2).toString(), numero: num })
+        guardarDatos(lista, PAGOS_AURA_EXCEL)
         await regenerarExcel(PAGOS_AURA_EXCEL)
       }
-    } catch (err) { console.error('[AURA] Error espejo pagos_aura:', err.message) }
+    } catch (err) { console.error('[AURA] Error espejo:', err.message) }
     await enviarComprobanteAura(grupoId)
+  }
+
+  if (/\bchila\b/i.test(datos.descripcion)) {
+    try {
+      if (archivoExcel !== PAGOS_CHILA_EXCEL) {
+        const lista = cargarDatos(PAGOS_CHILA_EXCEL)
+        const num   = lista.length > 0 ? Math.max(...lista.map(e => e.numero || 0)) + 1 : 1
+        lista.push({ ...datos, id: (Date.now()+3).toString(), numero: num })
+        guardarDatos(lista, PAGOS_CHILA_EXCEL)
+        await regenerarExcel(PAGOS_CHILA_EXCEL)
+      }
+    } catch (err) { console.error('[CHILA] Error espejo:', err.message) }
+    await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila', PAGOS_CHILA_EXCEL)
   }
 }
 
