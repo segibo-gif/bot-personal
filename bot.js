@@ -88,10 +88,11 @@ function esComidaAmbigua(descripcion) {
 
 // DEBUG STARTUP — muestra qué variables llegaron (primeros 10 chars del key)
 console.log('=== STARTUP DEBUG ===')
+console.log('RAW_GROQ:', JSON.stringify(process.env.GROQ_API_KEY), 'len:', (process.env.GROQ_API_KEY||'').length)
 console.log('GROQ_API_KEY:', GROQ_API_KEY ? ('OK - ' + GROQ_API_KEY.substring(0,10) + '...') : 'VACIA')
 console.log('PROYECTO_DIR:', process.env.PROYECTO_DIR || '(no definida)')
 console.log('RAILWAY_ENV:', process.env.RAILWAY_ENVIRONMENT || '(no definida)')
-console.log('PUPPETEER_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH || '(no definida)')
+console.log('ALL_ENV_KEYS:', Object.keys(process.env).filter(k => k.startsWith('GROQ') || k.startsWith('groq')).join(', ') || '(ninguna)')
 console.log('NODE_ENV:', process.env.NODE_ENV || '(no definida)')
 console.log('=====================')
 
