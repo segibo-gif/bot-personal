@@ -967,7 +967,7 @@ async function ejecutarEdicion(edicion, archivoExcel, grupoId) {
   } else if (/^#?\d+$/.test(edicion.referencia)) {
     // Buscar por número consecutivo: "#5", "44" (IA a veces devuelve sin #)
     const num = parseInt(edicion.referencia.replace('#', ''))
-    idx = lista.findLastIndex(e => e.numero === num)
+    idx = lista.findLastIndex(e => Number(e.numero) === num)
     if (idx < 0) {
       await client.sendMessage(grupoId, `❌ No encontré el gasto *#${num}*`)
       return true
@@ -977,7 +977,7 @@ async function ejecutarEdicion(edicion, archivoExcel, grupoId) {
     const numMatch = edicion.referencia.match(/\d+/)
     if (numMatch) {
       const num = parseInt(numMatch[0])
-      idx = lista.findLastIndex(e => e.numero === num)
+      idx = lista.findLastIndex(e => Number(e.numero) === num)
       if (idx < 0) {
         await client.sendMessage(grupoId, `❌ No encontré el gasto *#${num}*`)
         return true
@@ -1599,7 +1599,7 @@ async function procesarGasto(msg, chat, archivoExcel) {
   if (mBorrarNum) {
     const num = parseInt(mBorrarNum[1])
     const lista = cargarDatos(archivoExcel)
-    const idx = lista.findLastIndex(e => e.numero === num)
+    const idx = lista.findLastIndex(e => Number(e.numero) === num)
     if (idx < 0) { await client.sendMessage(grupoId, `❌ No encontré el registro *#${num}*`); return }
     await pedirConfirmacion(grupoId, 'borrar', lista[idx], null, null, archivoExcel)
     return
@@ -1632,7 +1632,7 @@ async function procesarGasto(msg, chat, archivoExcel) {
     const correcto = parseInt(valStr.replace(/[.,]/g, ''))
     const monto    = correcto < 500 ? correcto * 1000 : correcto
     const lista    = cargarDatos(archivoExcel)
-    const idx      = lista.findLastIndex(e => e.numero === numIdx)
+    const idx      = lista.findLastIndex(e => Number(e.numero) === numIdx)
     if (idx < 0) { await client.sendMessage(grupoId, `❌ No encontré el gasto *#${numIdx}*`); return }
     await pedirConfirmacion(grupoId, 'corregir_monto', lista[idx], monto, null, archivoExcel)
     return
