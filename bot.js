@@ -38,7 +38,6 @@ const TIEMPOS_EXCEL       = path.join(GASTOS_DIR, 'tiempos.xlsx')
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
 const MIRROR_A_FINANZAS = {
   [path.join(GASTOS_DIR, 'pagos_stella_valen.xlsx')]:  'Valen',
-  [path.join(GASTOS_DIR, 'pagos_stella_nania.xlsx')]:  'Nania',
   [path.join(GASTOS_DIR, 'pagos_beatriz.xlsx')]:       'Beatriz',
 }
 
