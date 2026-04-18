@@ -891,7 +891,9 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
     await enviarComprobanteAura(grupoId)
   }
 
-  if (/\bchila\b/i.test(datos.descripcion)) {
+  const esChila = /\bchila\b/i.test(datos.descripcion)
+    || (archivoExcel === FINANZAS_PRIORITY_EXCEL && /\bquincena\b/i.test(datos.descripcion))
+  if (esChila) {
     try {
       if (archivoExcel !== PAGOS_CHILA_EXCEL) {
         const lista = cargarDatos(PAGOS_CHILA_EXCEL)
