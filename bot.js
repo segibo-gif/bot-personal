@@ -1513,13 +1513,10 @@ async function procesarGasto(msg, chat, archivoExcel) {
   if (!texto || !texto.trim()) return
 
   // ── Enviar Excel ─────────────────────────────────────────
+  // Si el mensaje menciona "excel", "archivo", "planilla" o "historial" → entregar el archivo
   const _t = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  const _tieneArchivo = /\b(excel|archivo|planilla|hoja)\b/.test(_t)
-  const _tieneVerbo   = /\benv[ií]|envi[aeo]|mand[aeo]|pas[ao]|comparte|adjunta|necesito|quiero|dam[ae]|dem[ae]|muest|mostr|ver\b/.test(_t)
-  const esEnviarExcel = (_tieneArchivo && _tieneVerbo)
+  const esEnviarExcel = /\b(excel|archivo|planilla|historial)\b/.test(_t)
     || /^\/excel$/i.test(texto.trim())
-    || /\b(excel|archivo).*(actualizado|al\s+día|por\s+favor|porfavor)/i.test(texto)
-    || texto.trim().toLowerCase() === '/excel'
   if (esEnviarExcel) {
     const lista = cargarDatos(archivoExcel)
     if (!lista.length) {
