@@ -42,6 +42,9 @@ const PAGOS_AURA_EXCEL  = path.join(GASTOS_DIR, 'pagos_aura.xlsx')
 const NUMERO_CHILA      = '573216412940'
 const PAGOS_CHILA_EXCEL = path.join(GASTOS_DIR, 'pagos_chila.xlsx')
 
+// Archivo espejo de Valen (Pago Stella / Valen AI) — comprobante va al grupo
+const PAGOS_STELLA_VALEN_EXCEL = path.join(GASTOS_DIR, 'pagos_stella_valen.xlsx')
+
 // Archivos que se espejan automáticamente a Finanzas Priority
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
 const MIRROR_A_FINANZAS = {
@@ -810,13 +813,9 @@ async function guardarEnExcel(datos, remitente, archivoExcel) {
 }
 
 // ─── CONFIRMAR Y GUARDAR ─────────────────────────────────────
-// enviarComprobanteAura usa la función genérica
-async function enviarComprobanteAura(grupoId) {
-  await enviarComprobante(grupoId, NUMERO_AURA, 'Aura', PAGOS_AURA_EXCEL)
-}
-
-// ─── REENVIAR COMPROBANTE A PERSONA (genérico) ───────────────
-async function enviarComprobante(grupoId, numero, nombreExcel, archivoDestino) {
+// ─── REENVIAR COMPROBANTE (número directo o grupo por nombre) ──
+// destino: número string "573146425027" | { grupo: "pago stella / valen ai" }
+async function enviarComprobante(grupoId, destino, nombre) {
   const guardada = lastImagePerGroup[grupoId]
   if (!guardada) {
     await enviarTexto(grupoId, '⚠️ Gasto guardado, pero no encontré ningún comprobante. Envíe primero la imagen y luego el audio.')
@@ -829,19 +828,34 @@ async function enviarComprobante(grupoId, numero, nombreExcel, archivoDestino) {
   try {
     const media = await guardada.msg.downloadMedia()
     if (!media?.data) return
+
+    let number
+    if (typeof destino === 'string') {
+      number = destino
+    } else if (destino?.grupo) {
+      const listaGrupos = await evGet(`/group/fetchAllGroups/${INSTANCE_NAME}?getParticipants=false`)
+      const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+      const g = (Array.isArray(listaGrupos) ? listaGrupos : []).find(g => norm(g.subject).includes(norm(destino.grupo)))
+      if (!g) { await enviarTexto(grupoId, `⚠️ No encontré el grupo "${destino.grupo}".`); return }
+      number = normalizarChatId(g.id)
+    }
+
     await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
-      number: numero,
-      mediatype: 'image',
+      number, mediatype: 'image',
       mimetype: media.mimetype || 'image/jpeg',
       media: media.data,
       caption: '📎 Comprobante de pago',
     })
     delete lastImagePerGroup[grupoId]
-    console.log(`[COMPROBANTE] Enviado a ${numero}`)
-    await enviarTexto(grupoId, `✅ Comprobante enviado a ${nombreExcel}.`)
+    console.log(`[COMPROBANTE] Enviado a ${nombre}`)
+    await enviarTexto(grupoId, `✅ Comprobante enviado a ${nombre}.`)
   } catch (err) {
     console.error('[COMPROBANTE] Error:', err.message)
   }
+}
+
+async function enviarComprobanteAura(grupoId) {
+  await enviarComprobante(grupoId, NUMERO_AURA, 'Aura')
 }
 
 async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
@@ -903,7 +917,21 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
         await regenerarExcel(PAGOS_CHILA_EXCEL)
       }
     } catch (err) { console.error('[CHILA] Error espejo:', err.message) }
-    await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila', PAGOS_CHILA_EXCEL)
+    await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila')
+  }
+
+  const esValen = /\bvalen\b/i.test(datos.descripcion)
+  if (esValen) {
+    try {
+      if (archivoExcel !== PAGOS_STELLA_VALEN_EXCEL) {
+        const lista = cargarDatos(PAGOS_STELLA_VALEN_EXCEL)
+        const num   = lista.length > 0 ? Math.max(...lista.map(e => e.numero || 0)) + 1 : 1
+        lista.push({ ...datos, id: (Date.now()+4).toString(), numero: num })
+        guardarDatos(lista, PAGOS_STELLA_VALEN_EXCEL)
+        await regenerarExcel(PAGOS_STELLA_VALEN_EXCEL)
+      }
+    } catch (err) { console.error('[VALEN] Error espejo:', err.message) }
+    await enviarComprobante(grupoId, { grupo: 'pago stella / valen' }, 'Valen')
   }
 }
 
