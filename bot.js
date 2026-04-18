@@ -1833,14 +1833,16 @@ async function manejarWebhook(req, res) {
   try {
     const payload = req.body
     const evento = payload.event || req.params?.evento?.replace(/-/g, '.') || ''
+    console.log(`[WH] evento="${evento}" keys=${Object.keys(payload).join(',')}`)
     if (evento && evento !== 'messages.upsert') return
     const data = payload.data
-    if (!data?.key) return
+    if (!data?.key) { console.log('[WH] sin data.key'); return }
 
     const { key, message, messageType, pushName } = data
     const chatId  = key.remoteJid
     const fromMe  = key.fromMe === true
     const isGroup = chatId?.endsWith('@g.us')
+    console.log(`[WH] chatId=${chatId} fromMe=${fromMe} isGroup=${isGroup} type=${messageType} pushName=${pushName}`)
 
     if (!chatId) return
     if (chatId === 'status@broadcast') return
@@ -1902,20 +1904,23 @@ async function manejarWebhook(req, res) {
       await routearMensaje(msgObj, chatObj)
     } else if (fromMe && isGroup && !esRespuestaBot) {
       // Mensajes del dueño en grupos
-      console.log(`[BOT] Mensaje del dueño: ${bodyText}`)
+      console.log(`[BOT] Dueño en grupo "${chatName}": ${bodyText}`)
       await routearMensaje(msgObj, chatObj)
     } else if (fromMe && !isGroup && !esRespuestaBot) {
       // Mensajes del dueño en chats directos (el bot escribe desde su propio número)
       if (Object.keys(CHATS_DIRECTOS_GASTOS).some(n => chatName === n)) {
-        console.log(`[BOT] Mensaje del dueño en chat directo "${chatName}": ${bodyText}`)
+        console.log(`[BOT] Dueño en chat directo "${chatName}": ${bodyText}`)
         await routearMensaje(msgObj, chatObj)
+      } else {
+        console.log(`[WH] fromMe chat directo sin handler: chatName="${chatName}"`)
       }
     } else if (!fromMe && !isGroup && chatId === DUENO_JID && !esRespuestaBot) {
       // Dueño le escribe al bot desde su número personal (chat directo inverso)
-      // Forzamos nombre a 'mi asistente' para que routee al módulo asistente
-      console.log(`[BOT] Mensaje directo del dueño: ${bodyText}`)
+      console.log(`[BOT] Dueño → bot directo: "${bodyText}"`)
       chatObj.name = 'mi asistente'
       await routearMensaje(msgObj, chatObj)
+    } else {
+      console.log(`[WH] ignorado: fromMe=${fromMe} isGroup=${isGroup} chatId=${chatId}`)
     }
   } catch (err) {
     console.error('[WEBHOOK] Error:', err.message, '\n', err.stack)
