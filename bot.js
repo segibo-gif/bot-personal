@@ -1777,7 +1777,8 @@ async function manejarWebhook(req, res) {
   res.sendStatus(200)  // responder rápido a Evolution API
   try {
     const payload = req.body
-    if (payload.event !== 'messages.upsert') return
+    const evento = payload.event || req.params?.evento?.replace(/-/g, '.') || ''
+    if (evento && evento !== 'messages.upsert') return
     const data = payload.data
     if (!data?.key) return
 
@@ -1858,7 +1859,7 @@ async function manejarWebhook(req, res) {
   } catch (err) {
     console.error('[WEBHOOK] Error:', err.message)
   }
-})
+}
 
 // ═══════════════════════════════════════════════════════════
 // ─── MÓDULO ASISTENTE PERSONAL ───────────────────────────────
