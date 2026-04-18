@@ -107,6 +107,9 @@ const EVOLUTION_KEY  = strip(process.env.EVOLUTION_KEY)  || 'Terrano2024SecretKe
 const INSTANCE_NAME  = strip(process.env.INSTANCE_NAME)  || 'bot-personal'
 const WEBHOOK_URL    = strip(process.env.WEBHOOK_URL)    || ''
 const BOT_PORT       = process.env.PORT                  || 3000
+// Número personal del dueño — el bot responde cuando le escriben directamente
+const NUMERO_DUENO   = strip(process.env.NUMERO_DUENO)   || '573117647723'
+const DUENO_JID      = NUMERO_DUENO + '@s.whatsapp.net'
 
 // Caché de JID de grupo → nombre en minúsculas
 const grupoJids = {}
@@ -1865,11 +1868,15 @@ async function manejarWebhook(req, res) {
       console.log(`[BOT] Mensaje del dueño: ${bodyText}`)
       await routearMensaje(msgObj, chatObj)
     } else if (fromMe && !isGroup && !esRespuestaBot) {
-      // Mensajes del dueño en chats directos
+      // Mensajes del dueño en chats directos (el bot escribe desde su propio número)
       if (Object.keys(CHATS_DIRECTOS_GASTOS).some(n => chatName === n)) {
         console.log(`[BOT] Mensaje del dueño en chat directo "${chatName}": ${bodyText}`)
         await routearMensaje(msgObj, chatObj)
       }
+    } else if (!fromMe && !isGroup && chatId === DUENO_JID && !esRespuestaBot) {
+      // Dueño le escribe al bot desde su número personal (chat directo inverso)
+      console.log(`[BOT] Mensaje directo del dueño: ${bodyText}`)
+      await routearMensaje(msgObj, chatObj)
     }
   } catch (err) {
     console.error('[WEBHOOK] Error:', err.message)
