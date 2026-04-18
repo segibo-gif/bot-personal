@@ -1651,7 +1651,7 @@ async function procesarGasto(msg, chat, archivoExcel) {
   }
 
   // Intentar IA para casos más complejos de edición
-  const palabrasEdicion = /\b(borra(?:r[eé]?|me)?|borre|elimina(?:r[eé]?)?|elimine|quita(?:r[eé]?|me)?|quite|correg|modifica|estaba\s+mal|no\s+era|ese\s+era|eso\s+era)\b|#\d+/i
+  const palabrasEdicion = /borra|borrar|borre|elimina|eliminar|elimine|quita|quitar|quite|correg|modific|cambi[ao]|estaba\s+mal|no\s+era|ese\s+era|eso\s+era|#\d+/i
   if (palabrasEdicion.test(textoTrim)) {
     console.log(`[EDICION] Intentando con IA: "${textoTrim}"`)
     const edicion = await parsearEdicion(textoTrim)
