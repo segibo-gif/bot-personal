@@ -36,10 +36,7 @@ const TIEMPOS_EXCEL       = path.join(GASTOS_DIR, 'tiempos.xlsx')
 
 const GRUPOS_GASTOS = {
   'gastos':                     path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
-  'gastos personales':          path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
-  'gastos personales ai':       path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
-  'gastos empresa':             path.join(PROYECTO_DIR, 'datos', 'gastos_empresa.xlsx'),
-  'gastos empresa ai':          path.join(PROYECTO_DIR, 'datos', 'gastos_empresa.xlsx'),
+  'gastos ai':                  path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
   'pago stella / juancho':      path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
   'pago stella/juancho':        path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
   'pago stella / juancho ai':   path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
