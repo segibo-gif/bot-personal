@@ -35,7 +35,8 @@ const TIMER_FILE          = path.join(GASTOS_DIR, 'timer_activo.json')
 const TIEMPOS_EXCEL       = path.join(GASTOS_DIR, 'tiempos.xlsx')
 
 // Número de Aura (empleada del hogar) — recibe comprobante cuando se registra pago
-const NUMERO_AURA = '573146425027'
+const NUMERO_AURA     = '573146425027'
+const PAGOS_AURA_EXCEL = path.join(GASTOS_DIR, 'pagos_aura.xlsx')
 
 // Archivos que se espejan automáticamente a Finanzas Priority
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
@@ -60,6 +61,8 @@ const GRUPOS_GASTOS = {
   'pago stella / nania ai':     path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'pago stella/nania ai':       path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'finanzas priority ai':       path.join(PROYECTO_DIR, 'datos', 'finanzas_priority.xlsx'),
+  'aura casa ai':               path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
+  'aura casa':                  path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
 }
 
 // Conversaciones directas (chats individuales) que el bot también monitorea
@@ -866,8 +869,18 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
     `${signo}$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n\n` +
     `📂 ${datos.categoria}${subcat}${numTag}`
   )
-  // Si menciona a Aura → reenviar comprobante de pago a su grupo
+  // Si menciona a Aura → guardar en pagos_aura.xlsx y enviar comprobante
   if (/\baura\b/i.test(datos.descripcion)) {
+    try {
+      // Espejo en pagos_aura.xlsx (solo si no venimos ya de ese archivo)
+      if (archivoExcel !== PAGOS_AURA_EXCEL) {
+        const listaAura = cargarDatos(PAGOS_AURA_EXCEL)
+        const numAura   = listaAura.length > 0 ? Math.max(...listaAura.map(e => e.numero || 0)) + 1 : 1
+        listaAura.push({ ...datos, id: (Date.now()+2).toString(), numero: numAura })
+        guardarDatos(listaAura, PAGOS_AURA_EXCEL)
+        await regenerarExcel(PAGOS_AURA_EXCEL)
+      }
+    } catch (err) { console.error('[AURA] Error espejo pagos_aura:', err.message) }
     await enviarComprobanteAura(grupoId)
   }
 }
@@ -1986,7 +1999,12 @@ async function manejarWebhook(req, res) {
       await routearMensaje(msgObj, chatObj)
     } else if (fromMe && !isGroup && !esRespuestaBot) {
       // Mensajes del dueño en chats directos (el bot escribe desde su propio número)
-      if (Object.keys(CHATS_DIRECTOS_GASTOS).some(n => chatName === n)) {
+      if (chatId === NUMERO_AURA + '@s.whatsapp.net') {
+        // Chat directo con Aura → acceso a pagos_aura.xlsx
+        chatObj.name = 'aura casa ai'
+        console.log(`[BOT] Dueño en chat Aura: ${bodyText}`)
+        await routearMensaje(msgObj, chatObj)
+      } else if (Object.keys(CHATS_DIRECTOS_GASTOS).some(n => chatName === n)) {
         console.log(`[BOT] Dueño en chat directo "${chatName}": ${bodyText}`)
         await routearMensaje(msgObj, chatObj)
       } else {
