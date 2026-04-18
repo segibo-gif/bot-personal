@@ -1875,7 +1875,9 @@ async function manejarWebhook(req, res) {
       }
     } else if (!fromMe && !isGroup && chatId === DUENO_JID && !esRespuestaBot) {
       // Dueño le escribe al bot desde su número personal (chat directo inverso)
+      // Forzamos nombre a 'mi asistente' para que routee al módulo asistente
       console.log(`[BOT] Mensaje directo del dueño: ${bodyText}`)
+      chatObj.name = 'mi asistente'
       await routearMensaje(msgObj, chatObj)
     }
   } catch (err) {
