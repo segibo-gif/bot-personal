@@ -1455,7 +1455,7 @@ async function procesarGasto(msg, chat, archivoExcel) {
   // ── Enviar Excel ─────────────────────────────────────────
   const _t = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const _tieneArchivo = /\b(excel|archivo|planilla|hoja)\b/.test(_t)
-  const _tieneVerbo   = /\benv[ií]|envi[aeo]|mand[aeo]|pas[ao]|comparte|adjunta|necesito|quiero|dame|muestrame|ver\b/.test(_t)
+  const _tieneVerbo   = /\benv[ií]|envi[aeo]|mand[aeo]|pas[ao]|comparte|adjunta|necesito|quiero|dam[ae]|dem[ae]|muestrame|ver\b/.test(_t)
   const esEnviarExcel = (_tieneArchivo && _tieneVerbo)
     || /^\/excel$/i.test(texto.trim())
     || /\b(excel|archivo).*(actualizado|al\s+día|por\s+favor|porfavor)/i.test(texto)
@@ -1653,7 +1653,7 @@ async function procesarGasto(msg, chat, archivoExcel) {
   }
 
   // Intentar IA para casos más complejos de edición
-  const palabrasEdicion = /borra|borrar|borre|elimina|eliminar|elimine|quita|quitar|quite|correg|modific|cambi[ao]|estaba\s+mal|no\s+era|ese\s+era|eso\s+era|#\d+/i
+  const palabrasEdicion = /borra|borrar|borre|elimina|eliminar|elimine|quita|quitar|quite|correg|modific|cambi[ao]|pas[ae]|mover?|lleva|estaba\s+mal|no\s+era|ese\s+era|eso\s+era|#\d+/i
   if (palabrasEdicion.test(textoTrim)) {
     console.log(`[EDICION] Intentando con IA: "${textoTrim}"`)
     const edicion = await parsearEdicion(textoTrim)
