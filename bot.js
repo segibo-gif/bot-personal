@@ -264,9 +264,18 @@ function guardarAprendizaje(a) {
 
 function buscarEnAprendizaje(descripcion) {
   const aprendizaje = cargarAprendizaje()
-  const desc = descripcion.toLowerCase()
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const desc = norm(descripcion)
+  // Prioridad 1: descripción completa exacta
+  if (aprendizaje[descripcion.toLowerCase()]) return aprendizaje[descripcion.toLowerCase()]
+  // Prioridad 2: clave completa como palabra(s) entera(s) — evita que "libro" matchee "libros"
   for (const [clave, categoria] of Object.entries(aprendizaje)) {
-    if (desc.includes(clave.toLowerCase())) return categoria
+    const claveN = norm(clave)
+    const escaped = claveN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // \b no funciona con español, usamos (?:^|\s)clave(?:\s|$) para palabras completas
+    if (new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`).test(desc) || desc === claveN) {
+      return categoria
+    }
   }
   return null
 }
