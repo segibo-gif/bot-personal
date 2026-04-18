@@ -34,6 +34,14 @@ const TIEMPOS_FILE        = path.join(GASTOS_DIR, 'tiempos.json')
 const TIMER_FILE          = path.join(GASTOS_DIR, 'timer_activo.json')
 const TIEMPOS_EXCEL       = path.join(GASTOS_DIR, 'tiempos.xlsx')
 
+// Archivos que se espejan automáticamente a Finanzas Priority
+const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
+const MIRROR_A_FINANZAS = {
+  [path.join(GASTOS_DIR, 'pagos_stella_valen.xlsx')]:  'Valen',
+  [path.join(GASTOS_DIR, 'pagos_stella_nania.xlsx')]:  'Nania',
+  [path.join(GASTOS_DIR, 'pagos_beatriz.xlsx')]:       'Beatriz',
+}
+
 const GRUPOS_GASTOS = {
   'gastos':                     path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
   'gastos ai':                  path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
@@ -758,7 +766,7 @@ async function guardarEnExcel(datos, remitente, archivoExcel) {
 
   const lista = cargarDatos(archivoExcel)
   const numero = lista.length > 0 ? Math.max(...lista.map(e => e.numero || 0)) + 1 : 1
-  lista.push({
+  const entrada = {
     id:           Date.now().toString(),
     numero,
     fecha:        now.toLocaleDateString('es-CO'),
@@ -770,12 +778,33 @@ async function guardarEnExcel(datos, remitente, archivoExcel) {
     descripcion:  datos.descripcion,
     fechaAbono:   datos.fechaAbono || null,
     remitente,
-  })
+  }
+  lista.push(entrada)
   guardarDatos(lista, archivoExcel)
   await regenerarExcel(archivoExcel)
 
-  datos._numero = numero  // pasar el número al confirmar
+  datos._numero = numero
   console.log(`[GASTOS] ✅ #${numero} ${datos.tipo} $${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion} [${datos.categoria}]`)
+
+  // ── Espejo automático a Finanzas Priority ──────────────────
+  const origenFinanzas = MIRROR_A_FINANZAS[archivoExcel]
+  if (origenFinanzas) {
+    try {
+      const listaF  = cargarDatos(FINANZAS_PRIORITY_EXCEL)
+      const numeroF = listaF.length > 0 ? Math.max(...listaF.map(e => e.numero || 0)) + 1 : 1
+      listaF.push({
+        ...entrada,
+        id:          (Date.now() + 1).toString(),
+        numero:      numeroF,
+        descripcion: `[${origenFinanzas}] ${datos.descripcion}`,
+      })
+      guardarDatos(listaF, FINANZAS_PRIORITY_EXCEL)
+      await regenerarExcel(FINANZAS_PRIORITY_EXCEL)
+      console.log(`[FINANZAS] ✅ Espejo de ${origenFinanzas} → finanzas_priority #${numeroF}`)
+    } catch (err) {
+      console.error('[FINANZAS] Error espejo:', err.message)
+    }
+  }
 }
 
 // ─── CONFIRMAR Y GUARDAR ─────────────────────────────────────
