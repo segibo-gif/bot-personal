@@ -464,7 +464,8 @@ MONTOS — entiende todas las formas colombianas:
 - "millón y medio" = 1500000, "dos millones" = 2000000
 - Números 1-99 solos: asumir miles (21 = 21000, 34 = 34000, 80 = 80000)
 - Números 100-499 solos: asumir miles también (150 = 150000, 300 = 300000)
-- Números 500+ solos: usar tal cual (800 = 800, pero si hay contexto de gasto real, también × 1000)
+- Números 500-999 solos: asumir miles también (960 = 960000, 800 = 800000, 500 = 500000)
+- Números 1000+ solos: usar tal cual (1500 = 1500, 45000 = 45000)
 - OJO transcripción de voz — números hablados a veces quedan con un cero extra: "veintiuno" → "210", "treinta y cuatro" → "340". Si ves un número entre 100-490 que termina en 0 y NO hay "mil", "lucas" ni "palo", probablemente es el número real × 10 por error. Ejemplo: 210 → probablemente era 21 → 21000. 340 → probablemente era 34 → 34000. Aplica criterio: ¿tiene sentido ese gasto en pesos colombianos? Un almuerzo de $210.000 no tiene sentido, $21.000 sí.
 
 CATEGORÍAS:
@@ -865,9 +866,9 @@ function parsearEdicionRapido(texto) {
       return { accion: 'borrar', referencia: ref, valor_nuevo: null }
   }
 
-  // ── BORRAR / CORREGIR por número: "borra el #5", "eliminar gasto numero 1", "el #8 era 32 no 320" ─
+  // ── BORRAR / CORREGIR por número: "borra el #5", "modificar numero 3", "el #8 era 32 no 320" ─
   const mNumRef = t.match(/#(\d+)/)
-    || t.match(/\b(?:numero|gasto)\b\s+(?:numero\s+)?#?(\d+)/)
+    || t.match(/\b(?:numero|gasto|el)\b\s+(?:numero\s+)?#?(\d+)/)
   if (mNumRef) {
     const numRef = '#' + mNumRef[1]
     // Corregir monto: "el #5 era 32 no 320"
@@ -880,6 +881,10 @@ function parsearEdicionRapido(texto) {
     // Borrar: "borra el #5", "elimina el #12"
     if (/(borra|elimina|quita|borrar|eliminar|borré|eliminé)/i.test(t))
       return { accion: 'borrar', referencia: numRef, valor_nuevo: null }
+    // Cambiar categoría: "modificar el numero 3 a hogar", "el #5 va en ocio"
+    const mCat = t.match(/\b(hogar|hijos|ocio|otros)\b/i)
+    if (mCat && /(modific|cambia|correg|va en|mover|cambiar)/i.test(t))
+      return { accion: 'corregir_categoria', referencia: numRef, valor_nuevo: mCat[1].charAt(0).toUpperCase() + mCat[1].slice(1).toLowerCase() }
   }
 
   // ── CORREGIR MONTO: "era 32 no 320" / "ese era 15 no 150" ─
@@ -978,6 +983,17 @@ async function ejecutarEdicion(edicion, archivoExcel, grupoId) {
     if (idx < 0) {
       await client.sendMessage(grupoId, `❌ No encontré el gasto *#${num}*`)
       return true
+    }
+  } else if (/\d+/.test(edicion.referencia)) {
+    // IA devolvió algo como "numero 3" o "3 de hijos" — extraer el número
+    const numMatch = edicion.referencia.match(/\d+/)
+    if (numMatch) {
+      const num = parseInt(numMatch[0])
+      idx = lista.findLastIndex(e => e.numero === num)
+      if (idx < 0) {
+        await client.sendMessage(grupoId, `❌ No encontré el gasto *#${num}*`)
+        return true
+      }
     }
   } else {
     const ref = edicion.referencia.toString().toLowerCase()
