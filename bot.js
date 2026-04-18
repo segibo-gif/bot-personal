@@ -453,20 +453,10 @@ async function extraerDatosGasto(texto) {
     role: 'user',
     content: `Eres un asistente que registra gastos personales en Colombia. Interpreta CUALQUIER mensaje en español colombiano informal y extrae el gasto, así esté mal escrito, use jerga o sea una frase larga.
 
-MONTOS — entiende todas las formas colombianas:
-- "lucas" = miles (5 lucas = 5000, 20 lucas = 20000)
-- "un palo" = 1.000.000, "dos palos" = 2.000.000
-- "medio" solo = 500, pero "medio millón" = 500000
-- "luca" = 1000
+MONTOS — usar siempre el número exacto que da el usuario, sin conversiones:
+- Tomar el número tal cual como está escrito (960 = 960, 45000 = 45000, 1500000 = 1500000)
 - "pesos" se ignora
-- "como", "unos", "más o menos" antes del monto = aproximado, usar igual
-- "mil" al final: 15mil = 15000, 2mil = 2000
-- "millón y medio" = 1500000, "dos millones" = 2000000
-- Números 1-99 solos: asumir miles (21 = 21000, 34 = 34000, 80 = 80000)
-- Números 100-499 solos: asumir miles también (150 = 150000, 300 = 300000)
-- Números 500-999 solos: asumir miles también (960 = 960000, 800 = 800000, 500 = 500000)
-- Números 1000+ solos: usar tal cual (1500 = 1500, 45000 = 45000)
-- OJO transcripción de voz — números hablados a veces quedan con un cero extra: "veintiuno" → "210", "treinta y cuatro" → "340". Si ves un número entre 100-490 que termina en 0 y NO hay "mil", "lucas" ni "palo", probablemente es el número real × 10 por error. Ejemplo: 210 → probablemente era 21 → 21000. 340 → probablemente era 34 → 34000. Aplica criterio: ¿tiene sentido ese gasto en pesos colombianos? Un almuerzo de $210.000 no tiene sentido, $21.000 sí.
+- Si no hay número claro → {"error":"no_entendido"}
 
 CATEGORÍAS:
 - Hogar: mercado, domicilios de comida, arriendo, servicios (agua/luz/gas/internet), salud prepagada, farmacia, médico, aseo, limpieza, gasolina, taxi, Uber, bus, parqueadero, peaje, SOAT, taller
@@ -485,17 +475,15 @@ Si el mensaje es una instrucción para borrar, corregir o modificar algo (borra,
 Si NO hay ninguna referencia a dinero o monto → {"error":"no_entendido"}
 
 EJEMPLOS:
-- "almorcé en el centro, pagué como 15 lucas" → {"tipo":"gasto","monto":15000,"categoria":"Ocio","subcategoria":null,"descripcion":"Almuerzo en el centro"}
-- "fui al gym hoy, 80" → {"tipo":"gasto","monto":80000,"categoria":"Ocio","subcategoria":null,"descripcion":"Gimnasio"}
-- "se me fue un palo en el mercado" → {"tipo":"gasto","monto":1000000,"categoria":"Hogar","subcategoria":null,"descripcion":"Mercado"}
-- "pagué el arriendo, 2 millones y medio" → {"tipo":"gasto","monto":2500000,"categoria":"Hogar","subcategoria":null,"descripcion":"Arriendo"}
-- "tomé unas cervezas con los parceros anoche, como 35 lucas" → {"tipo":"gasto","monto":35000,"categoria":"Ocio","subcategoria":null,"descripcion":"Cervezas con amigos"}
-- "le compré útiles a salvador, 45000" → {"tipo":"gasto","monto":45000,"categoria":"Hijos","subcategoria":"Salvador","descripcion":"Útiles escolares Salvador"}
-- "me consignaron el arriendo del local, 800" → {"tipo":"ingreso","monto":800000,"categoria":"Otros","subcategoria":null,"descripcion":"Arriendo local recibido"}
-- "violeta necesitaba zapatos pa el colegio, 120" → {"tipo":"gasto","monto":120000,"categoria":"Hijos","subcategoria":"Violeta","descripcion":"Zapatos colegio Violeta"}
-- "tanqueé, 180 lucas" → {"tipo":"gasto","monto":180000,"categoria":"Hogar","subcategoria":null,"descripcion":"Gasolina"}
-- "colegio de los niños, 800" → {"tipo":"gasto","monto":800000,"categoria":"Hijos","subcategoria":"Ambos","descripcion":"Colegio niños"}
-- "matricula, 2 palos" → {"tipo":"gasto","monto":2000000,"categoria":"Hijos","subcategoria":"Ambos","descripcion":"Matrícula"}
+- "almorcé en el centro, 15000" → {"tipo":"gasto","monto":15000,"categoria":"Ocio","subcategoria":null,"descripcion":"Almuerzo en el centro"}
+- "gym, 80000" → {"tipo":"gasto","monto":80000,"categoria":"Ocio","subcategoria":null,"descripcion":"Gimnasio"}
+- "arriendo, 2500000" → {"tipo":"gasto","monto":2500000,"categoria":"Hogar","subcategoria":null,"descripcion":"Arriendo"}
+- "útiles salvador, 45000" → {"tipo":"gasto","monto":45000,"categoria":"Hijos","subcategoria":"Salvador","descripcion":"Útiles escolares Salvador"}
+- "consignaron arriendo local, 800000" → {"tipo":"ingreso","monto":800000,"categoria":"Otros","subcategoria":null,"descripcion":"Arriendo local recibido"}
+- "zapatos violeta colegio, 120000" → {"tipo":"gasto","monto":120000,"categoria":"Hijos","subcategoria":"Violeta","descripcion":"Zapatos colegio Violeta"}
+- "gasolina, 180000" → {"tipo":"gasto","monto":180000,"categoria":"Hogar","subcategoria":null,"descripcion":"Gasolina"}
+- "colegio niños, 800000" → {"tipo":"gasto","monto":800000,"categoria":"Hijos","subcategoria":"Ambos","descripcion":"Colegio niños"}
+- "matricula, 2000000" → {"tipo":"gasto","monto":2000000,"categoria":"Hijos","subcategoria":"Ambos","descripcion":"Matrícula"}
 
 FECHA DEL EVENTO (fechaAbono): si el mensaje menciona una fecha específica ("el 22 de diciembre", "el lunes", "ayer", "el 5"), extráela en formato DD/MM/YYYY usando el año actual (${new Date().getFullYear()}). Si no menciona fecha → null.
 
