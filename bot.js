@@ -1786,6 +1786,32 @@ app.use(express.json({ limit: '50mb' }))
 
 app.get('/', (_req, res) => res.send('Bot Personal OK ✅'))
 
+// Endpoint temporal de debug
+app.get('/admin/debug', (req, res) => {
+  const token = req.query.token
+  if (token !== 'terrano2024restore') return res.status(403).json({ error: 'forbidden' })
+  const archivos = ['gastos_personales_data.json','aprendizaje.json','proyectos.json',
+    'pagos_stella_juancho_data.json','pagos_beatriz_data.json','pendiente.json',
+    'pendiente_accion.json','pendiente_periodo.json']
+  const resultado = {}
+  for (const f of archivos) {
+    const p = path.join(GASTOS_DIR, f)
+    if (fs.existsSync(p)) {
+      const raw = fs.readFileSync(p, 'utf8')
+      try {
+        const parsed = JSON.parse(raw)
+        resultado[f] = { existe: true, bytes: raw.length, tipo: Array.isArray(parsed) ? 'array' : typeof parsed, items: Array.isArray(parsed) ? parsed.length : 'N/A', inicio: raw.substring(0, 60) }
+      } catch (e) {
+        resultado[f] = { existe: true, bytes: raw.length, error: e.message, inicio: raw.substring(0, 60) }
+      }
+    } else {
+      resultado[f] = { existe: false }
+    }
+  }
+  resultado._gastos_dir = GASTOS_DIR
+  res.json(resultado)
+})
+
 // Endpoint temporal para restaurar datos al volumen
 app.post('/admin/restore', express.json({ limit: '10mb' }), (req, res) => {
   const { token, filename, content } = req.body
