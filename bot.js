@@ -2092,6 +2092,48 @@ Responde SOLO con JSON válido:`
   } catch { return null }
 }
 
+function formatearPendientesCategorias(lista) {
+  const DIVISOR  = '─────────────\n'
+  const SEPARADOR = '━━━━━━━━━━━━━━━━━━━━━\n'
+  const pendientes = lista.filter(p => p.tipo === 'Pendiente')
+
+  if (pendientes.length === 0) return `⏳ *Pendientes (0)*\n\n_No hay pendientes registrados todavía._`
+
+  const personales = pendientes.filter(p => !p.categoria || p.categoria === 'Personal')
+  const terrano    = pendientes.filter(p => p.categoria === 'Terrano')
+
+  let msg = ''
+
+  // ── Personales ──
+  msg += `⏳ *Pendientes personales (${personales.length})*\n\n`
+  if (personales.length === 0) {
+    msg += `_Sin pendientes personales._\n`
+  } else {
+    personales.forEach((p, i) => {
+      msg += `*#${p.numero}* ${p.titulo}\n`
+      if (p.descripcion) msg += `_${p.descripcion}_\n`
+      if (i < personales.length - 1) msg += DIVISOR
+    })
+  }
+
+  // ── Separador ──
+  msg += `\n${SEPARADOR}`
+
+  // ── Terrano ──
+  msg += `⏳ *Pendientes Terrano (${terrano.length})*\n\n`
+  if (terrano.length === 0) {
+    msg += `_Sin pendientes Terrano._\n`
+  } else {
+    terrano.forEach((p, i) => {
+      msg += `*#${p.numero}* ${p.titulo}\n`
+      if (p.descripcion) msg += `_${p.descripcion}_\n`
+      if (i < terrano.length - 1) msg += DIVISOR
+    })
+  }
+
+  return msg.trim()
+}
+
 function formatearListaProyectos(lista, filtroTipo = null) {
   const EMOJI = { 'Proyecto': '🚀', 'Pendiente': '⏳', 'Idea': '💡' }
   const items = filtroTipo ? lista.filter(p => p.tipo === filtroTipo) : lista
@@ -2421,7 +2463,7 @@ async function procesarAsistente(msg, chat) {
 
     // WhatsApp 1: Pendientes (primero — actividades a desarrollar)
     const tienePend = proyectos.some(p => p.tipo === 'Pendiente')
-    if (tienePend) await client.sendMessage(grupoId, formatearListaProyectos(proyectos, 'Pendiente'))
+    if (tienePend) await client.sendMessage(grupoId, formatearPendientesCategorias(proyectos))
 
     // WhatsApp 2: Proyectos
     const tieneProy = proyectos.some(p => p.tipo === 'Proyecto')
@@ -2461,8 +2503,12 @@ async function procesarAsistente(msg, chat) {
 
   if (esVerProy || esVerPend || esVerIdea) {
     const proyectos = cargarProyectos()
-    const filtro = esVerProy ? 'Proyecto' : esVerPend ? 'Pendiente' : esVerIdea ? 'Idea' : null
-    await client.sendMessage(grupoId, formatearListaProyectos(proyectos, filtro))
+    if (esVerPend) {
+      await client.sendMessage(grupoId, formatearPendientesCategorias(proyectos))
+    } else {
+      const filtro = esVerProy ? 'Proyecto' : 'Idea'
+      await client.sendMessage(grupoId, formatearListaProyectos(proyectos, filtro))
+    }
     return
   }
 
@@ -2781,6 +2827,10 @@ async function procesarAsistente(msg, chat) {
       descripcion: datosProy.descripcion || null,
       fecha: new Date().toLocaleDateString('es-CO', { day:'2-digit', month:'2-digit', year:'numeric' }),
       estado: 'Activo',
+      // Categoría para Pendientes: 'Personal' por defecto, 'Terrano' si menciona la empresa
+      categoria: (datosProy.tipo === 'Pendiente')
+        ? (/terrano/i.test(texto) ? 'Terrano' : 'Personal')
+        : undefined,
     }
     proyectos.push(nuevo)
     guardarProyectos(proyectos)
@@ -2788,7 +2838,8 @@ async function procesarAsistente(msg, chat) {
 
     const EMOJI = { 'Proyecto':'🚀', 'Pendiente':'⏳', 'Idea':'💡' }
     const emoji = EMOJI[nuevo.tipo] || '📌'
-    let confirmacion = `${emoji} *${nuevo.tipo} agregado*\n\n`
+    const etiquetaCat = nuevo.tipo === 'Pendiente' ? ` _(${nuevo.categoria})_` : ''
+    let confirmacion = `${emoji} *${nuevo.tipo} agregado*${etiquetaCat}\n\n`
     confirmacion += `*#${nuevo.numero}* ${nuevo.titulo}\n`
     if (nuevo.descripcion) confirmacion += `_${nuevo.descripcion}_\n`
     confirmacion += `\n📋 Di _"ver ${nuevo.tipo.toLowerCase()}s"_ para ver la lista completa`
