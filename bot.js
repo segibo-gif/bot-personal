@@ -1533,13 +1533,13 @@ async function procesarGasto(msg, chat, archivoExcel) {
       .replace(/^(el|la|ese|esa)\s+/, '')
       .replace(/\s+de\s+(hijos|hogar|ocio|otros)\s*$/, '')
       .trim()
-    const mNumCorr = descLimpia.match(/(?:gasto\s+(?:numero\s+)?#?|#)(\d+)$/)
+    const mNumCorr = descLimpia.match(/(?:gasto\s+(?:numero\s+)?#?|numero\s+|#)(\d+)$/)
       || descLimpia.match(/^#?(\d{1,4})$/)
     if (descCorr === 'ultimo') {
       entrada = lista[lista.length - 1]
     } else if (mNumCorr) {
       const num = parseInt(mNumCorr[1])
-      entrada = lista.slice().reverse().find(e => e.numero === num)
+      entrada = lista.slice().reverse().find(e => Number(e.numero) === num)
       if (!entrada) { await client.sendMessage(grupoId, `❌ No encontré el gasto *#${num}*`); return }
     } else {
       entrada = lista.slice().reverse().find(e => e.descripcion.toLowerCase().includes(descLimpia))
