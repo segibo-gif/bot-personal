@@ -286,6 +286,19 @@ function aprenderCategoria(descripcion, categoria) {
   console.log(`[APRENDIZAJE] "${descripcion}" → ${categoria}`)
 }
 
+// Borra del aprendizaje todas las entradas que contengan la palabra clave
+function olvidarAprendizaje(clave) {
+  const aprendizaje = cargarAprendizaje()
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const claveN = norm(clave)
+  const antes = Object.keys(aprendizaje).length
+  for (const k of Object.keys(aprendizaje)) {
+    if (norm(k).includes(claveN)) delete aprendizaje[k]
+  }
+  guardarAprendizaje(aprendizaje)
+  return antes - Object.keys(aprendizaje).length  // cuántas se borraron
+}
+
 // ─── ESTADO PENDIENTE ────────────────────────────────────────
 function cargarPendientes() {
   try { return JSON.parse(fs.readFileSync(PENDIENTE_FILE, 'utf-8')) }
@@ -1560,6 +1573,31 @@ async function procesarGasto(msg, chat, archivoExcel) {
   }
 
   if (!texto || !texto.trim()) return
+
+  // ── Aprendizaje: ver o borrar entradas ───────────────────
+  const _tA = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const mOlvidar = _tA.match(/\bolvidar?\b\s+(.+)/)
+  if (mOlvidar || /^\/(aprendizaje|olvida)$/i.test(texto.trim())) {
+    if (mOlvidar) {
+      const clave = mOlvidar[1].trim()
+      const borradas = olvidarAprendizaje(clave)
+      if (borradas > 0) {
+        await client.sendMessage(grupoId, `✅ Olvidé "${clave}" (${borradas} entrada${borradas > 1 ? 's' : ''} borrada${borradas > 1 ? 's' : ''}).`)
+      } else {
+        await client.sendMessage(grupoId, `❓ No encontré nada con "${clave}" en el aprendizaje.`)
+      }
+    } else {
+      const aprendizaje = cargarAprendizaje()
+      const entradas = Object.entries(aprendizaje)
+      if (!entradas.length) {
+        await client.sendMessage(grupoId, '📚 El aprendizaje está vacío.')
+      } else {
+        const lineas = entradas.map(([k, v]) => `• "${k}" → ${v}`).join('\n')
+        await client.sendMessage(grupoId, `📚 *Aprendizaje guardado (${entradas.length}):*\n\n${lineas}\n\n_Di "olvidar [palabra]" para borrar entradas._`)
+      }
+    }
+    return
+  }
 
   // ── Enviar Excel ─────────────────────────────────────────
   // Si el mensaje menciona "excel", "archivo", "planilla" o "historial" → entregar el archivo
