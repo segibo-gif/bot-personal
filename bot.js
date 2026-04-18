@@ -34,6 +34,9 @@ const TIEMPOS_FILE        = path.join(GASTOS_DIR, 'tiempos.json')
 const TIMER_FILE          = path.join(GASTOS_DIR, 'timer_activo.json')
 const TIEMPOS_EXCEL       = path.join(GASTOS_DIR, 'tiempos.xlsx')
 
+// Número de Aura (empleada del hogar) — recibe comprobante cuando se registra pago
+const NUMERO_AURA = '573146425027'
+
 // Archivos que se espejan automáticamente a Finanzas Priority
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
 const MIRROR_A_FINANZAS = {
@@ -815,25 +818,15 @@ async function enviarComprobanteAura(grupoId) {
   try {
     const media = await guardada.msg.downloadMedia()
     if (!media?.data) { console.log('[AURA] No se pudo obtener base64 de la imagen'); return }
-    // Buscar grupo/chat "Aura Casa AI"
-    const grupos = await evGet(`/group/fetchAllGroups/${INSTANCE_NAME}?getParticipants=false`)
-    const grupoAura = (Array.isArray(grupos) ? grupos : []).find(g =>
-      (g.subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('aura casa')
-    )
-    if (!grupoAura) {
-      console.log('[AURA] No encontré el grupo "Aura Casa AI"')
-      await enviarTexto(grupoId, '⚠️ Gasto guardado, pero no encontré el grupo *"Aura Casa AI"* para enviarle el comprobante. Créelo en WhatsApp con el bot y Aura adentro.')
-      return
-    }
     await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
-      number: normalizarChatId(grupoAura.id),
+      number: NUMERO_AURA,
       mediatype: 'image',
       mimetype: media.mimetype || 'image/jpeg',
       media: media.data,
       caption: '📎 Comprobante de pago',
     })
     delete lastImagePerGroup[grupoId]
-    console.log('[AURA] Comprobante enviado a', grupoAura.subject)
+    console.log('[AURA] Comprobante enviado a', NUMERO_AURA)
     await enviarTexto(grupoId, '✅ Comprobante enviado a Aura.')
   } catch (err) {
     console.error('[AURA] Error enviando comprobante:', err.message)
