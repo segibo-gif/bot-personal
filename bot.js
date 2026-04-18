@@ -1772,7 +1772,8 @@ app.use(express.json({ limit: '50mb' }))
 
 app.get('/', (_req, res) => res.send('Bot Personal OK ✅'))
 
-app.post('/webhook', async (req, res) => {
+// Evolution API puede enviar a /webhook o a /webhook/messages-upsert
+async function manejarWebhook(req, res) {
   res.sendStatus(200)  // responder rápido a Evolution API
   try {
     const payload = req.body
@@ -3086,6 +3087,10 @@ async function inicializarEvolution() {
     }
   } catch {}
 }
+
+// Evolution API puede enviar a /webhook o /webhook/messages-upsert (o cualquier subruta)
+app.post('/webhook', manejarWebhook)
+app.post('/webhook/:evento', manejarWebhook)
 
 // ─── ARRANQUE ─────────────────────────────────────────────────
 app.listen(BOT_PORT, async () => {
