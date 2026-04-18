@@ -92,7 +92,8 @@ console.log('RAW_GROQ:', JSON.stringify(process.env.GROQ_API_KEY), 'len:', (proc
 console.log('GROQ_API_KEY:', GROQ_API_KEY ? ('OK - ' + GROQ_API_KEY.substring(0,10) + '...') : 'VACIA')
 console.log('PROYECTO_DIR:', process.env.PROYECTO_DIR || '(no definida)')
 console.log('RAILWAY_ENV:', process.env.RAILWAY_ENVIRONMENT || '(no definida)')
-console.log('ALL_ENV_KEYS:', Object.keys(process.env).filter(k => k.startsWith('GROQ') || k.startsWith('groq')).join(', ') || '(ninguna)')
+console.log('ALL_KEYS_COUNT:', Object.keys(process.env).length)
+console.log('ALL_KEYS:', Object.keys(process.env).sort().join(', '))
 console.log('NODE_ENV:', process.env.NODE_ENV || '(no definida)')
 console.log('=====================')
 
