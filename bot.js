@@ -130,21 +130,32 @@ async function evPost(ruta, body) {
   return r.json()
 }
 
+// Evolution API acepta JIDs @g.us para grupos, pero para chats directos
+// prefiere el número limpio sin @s.whatsapp.net
+function normalizarChatId(chatId) {
+  if (chatId && chatId.endsWith('@s.whatsapp.net')) {
+    return chatId.replace('@s.whatsapp.net', '')
+  }
+  return chatId
+}
+
 async function enviarTexto(chatId, texto) {
   try {
-    await evPost(`/message/sendText/${INSTANCE_NAME}`, { number: chatId, text: texto })
+    const number = normalizarChatId(chatId)
+    await evPost(`/message/sendText/${INSTANCE_NAME}`, { number, text: texto })
   } catch (err) { console.error('[EVO] enviarTexto:', err.message) }
 }
 
 async function enviarArchivo(chatId, filePath, caption) {
   try {
-    const base64   = fs.readFileSync(filePath).toString('base64')
-    const fileName = path.basename(filePath)
-    const mimetype = fileName.endsWith('.xlsx')
+    const number    = normalizarChatId(chatId)
+    const base64    = fs.readFileSync(filePath).toString('base64')
+    const fileName  = path.basename(filePath)
+    const mimetype  = fileName.endsWith('.xlsx')
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       : 'application/octet-stream'
     await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
-      number: chatId, mediatype: 'document', mimetype,
+      number, mediatype: 'document', mimetype,
       media: base64, fileName, caption: caption || fileName,
     })
   } catch (err) { console.error('[EVO] enviarArchivo:', err.message) }
