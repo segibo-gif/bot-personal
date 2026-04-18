@@ -1781,9 +1781,10 @@ app.post('/admin/restore', express.json({ limit: '10mb' }), (req, res) => {
     'pendiente_accion.json','pendiente_periodo.json']
   if (!allowed.includes(filename)) return res.status(400).json({ error: 'not allowed' })
   if (!fs.existsSync(GASTOS_DIR)) fs.mkdirSync(GASTOS_DIR, { recursive: true })
-  fs.writeFileSync(path.join(GASTOS_DIR, filename), content, 'utf8')
-  console.log(`[RESTORE] Archivo restaurado: ${filename}`)
-  res.json({ ok: true, filename })
+  const data = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
+  fs.writeFileSync(path.join(GASTOS_DIR, filename), data, 'utf8')
+  console.log(`[RESTORE] Archivo restaurado: ${filename} (${data.length} bytes)`)
+  res.json({ ok: true, filename, bytes: data.length })
 })
 
 // Evolution API puede enviar a /webhook o a /webhook/messages-upsert
