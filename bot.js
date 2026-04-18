@@ -1772,6 +1772,20 @@ app.use(express.json({ limit: '50mb' }))
 
 app.get('/', (_req, res) => res.send('Bot Personal OK ✅'))
 
+// Endpoint temporal para restaurar datos al volumen
+app.post('/admin/restore', express.json({ limit: '10mb' }), (req, res) => {
+  const { token, filename, content } = req.body
+  if (token !== 'terrano2024restore') return res.status(403).json({ error: 'forbidden' })
+  const allowed = ['gastos_personales_data.json','aprendizaje.json','proyectos.json',
+    'pagos_stella_juancho_data.json','pagos_beatriz_data.json','pendiente.json',
+    'pendiente_accion.json','pendiente_periodo.json']
+  if (!allowed.includes(filename)) return res.status(400).json({ error: 'not allowed' })
+  if (!fs.existsSync(GASTOS_DIR)) fs.mkdirSync(GASTOS_DIR, { recursive: true })
+  fs.writeFileSync(path.join(GASTOS_DIR, filename), content, 'utf8')
+  console.log(`[RESTORE] Archivo restaurado: ${filename}`)
+  res.json({ ok: true, filename })
+})
+
 // Evolution API puede enviar a /webhook o a /webhook/messages-upsert
 async function manejarWebhook(req, res) {
   res.sendStatus(200)  // responder rápido a Evolution API
