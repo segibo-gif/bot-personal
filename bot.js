@@ -1786,63 +1786,20 @@ app.use(express.json({ limit: '50mb' }))
 
 app.get('/', (_req, res) => res.send('Bot Personal OK ✅'))
 
-// Endpoint temporal de debug
-app.get('/admin/debug', (req, res) => {
-  const token = req.query.token
-  if (token !== 'terrano2024restore') return res.status(403).json({ error: 'forbidden' })
-  const archivos = ['gastos_personales_data.json','aprendizaje.json','proyectos.json',
-    'pagos_stella_juancho_data.json','pagos_beatriz_data.json','pendiente.json',
-    'pendiente_accion.json','pendiente_periodo.json']
-  const resultado = {}
-  for (const f of archivos) {
-    const p = path.join(GASTOS_DIR, f)
-    if (fs.existsSync(p)) {
-      const raw = fs.readFileSync(p, 'utf8')
-      try {
-        const parsed = JSON.parse(raw)
-        resultado[f] = { existe: true, bytes: raw.length, tipo: Array.isArray(parsed) ? 'array' : typeof parsed, items: Array.isArray(parsed) ? parsed.length : 'N/A', inicio: raw.substring(0, 60) }
-      } catch (e) {
-        resultado[f] = { existe: true, bytes: raw.length, error: e.message, inicio: raw.substring(0, 60) }
-      }
-    } else {
-      resultado[f] = { existe: false }
-    }
-  }
-  resultado._gastos_dir = GASTOS_DIR
-  res.json(resultado)
-})
-
-// Endpoint temporal para restaurar datos al volumen
-app.post('/admin/restore', express.json({ limit: '10mb' }), (req, res) => {
-  const { token, filename, content } = req.body
-  if (token !== 'terrano2024restore') return res.status(403).json({ error: 'forbidden' })
-  const allowed = ['gastos_personales_data.json','aprendizaje.json','proyectos.json',
-    'pagos_stella_juancho_data.json','pagos_beatriz_data.json','pendiente.json',
-    'pendiente_accion.json','pendiente_periodo.json']
-  if (!allowed.includes(filename)) return res.status(400).json({ error: 'not allowed' })
-  if (!fs.existsSync(GASTOS_DIR)) fs.mkdirSync(GASTOS_DIR, { recursive: true })
-  const data = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
-  fs.writeFileSync(path.join(GASTOS_DIR, filename), data, 'utf8')
-  console.log(`[RESTORE] Archivo restaurado: ${filename} (${data.length} bytes)`)
-  res.json({ ok: true, filename, bytes: data.length })
-})
-
 // Evolution API puede enviar a /webhook o a /webhook/messages-upsert
 async function manejarWebhook(req, res) {
   res.sendStatus(200)  // responder rápido a Evolution API
   try {
     const payload = req.body
     const evento = payload.event || req.params?.evento?.replace(/-/g, '.') || ''
-    console.log(`[WH] evento="${evento}" keys=${Object.keys(payload).join(',')}`)
     if (evento && evento !== 'messages.upsert') return
     const data = payload.data
-    if (!data?.key) { console.log('[WH] sin data.key'); return }
+    if (!data?.key) return
 
     const { key, message, messageType, pushName } = data
     const chatId  = key.remoteJid
     const fromMe  = key.fromMe === true
     const isGroup = chatId?.endsWith('@g.us')
-    console.log(`[WH] chatId=${chatId} fromMe=${fromMe} isGroup=${isGroup} type=${messageType} pushName=${pushName}`)
 
     if (!chatId) return
     if (chatId === 'status@broadcast') return
