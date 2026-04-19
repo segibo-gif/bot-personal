@@ -45,6 +45,10 @@ const PAGOS_CHILA_EXCEL = path.join(GASTOS_DIR, 'pagos_chila.xlsx')
 // Archivo espejo de Valen (Pago Stella / Valen AI) — comprobante va al grupo
 const PAGOS_STELLA_VALEN_EXCEL = path.join(GASTOS_DIR, 'pagos_stella_valen.xlsx')
 
+// Número de Beatriz (PR Beatriz Producción AI) — recibe comprobante cuando se registra pago
+const NUMERO_BEATRIZ      = '573206917024'
+const PAGOS_BEATRIZ_EXCEL = path.join(GASTOS_DIR, 'pagos_beatriz.xlsx')
+
 // Archivos que se espejan automáticamente a Finanzas Priority
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
 const MIRROR_A_FINANZAS = {
@@ -936,6 +940,12 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
       trigger: (txt, xl) => /\bvalen\b/i.test(txt),
       destino: { grupo: 'pago stella / valen' },
       excel:   PAGOS_STELLA_VALEN_EXCEL,
+    },
+    {
+      nombre:  'Beatriz',
+      trigger: (txt, xl) => /\bbeatriz\b/i.test(txt),
+      destino: NUMERO_BEATRIZ,
+      excel:   PAGOS_BEATRIZ_EXCEL,
     },
   ]
 
@@ -1891,37 +1901,8 @@ async function procesarGasto(msg, chat, archivoExcel) {
     let remitente = msg.author ? msg.author.replace('@c.us', '') : 'Desconocido'
     try { const contact = await msg.getContact(); remitente = contact.pushname || contact.name || remitente } catch {}
 
-    // ¿Menciona a Beatriz? → guardar también en su Excel y notificarle
-    const mencionaBeatriz = /beatriz/i.test(datos.descripcion) || /beatriz/i.test(texto)
-    const excelBeatriz = path.join(PROYECTO_DIR, 'datos', 'pagos_beatriz.xlsx')
-    if (mencionaBeatriz && archivoExcel !== excelBeatriz) {
-      // 1. Confirmar en el grupo de Juancho
-      await confirmarYGuardar(grupoId, datos, remitente, archivoExcel)
-      // 2. Guardar en Excel de Beatriz y notificarle en su chat
-      try {
-        await guardarEnExcel(datos, remitente, excelBeatriz)
-        console.log(`[ABONO] Copiado al Excel de Beatriz: ${datos.descripcion}`)
-        // Buscar el chat de Beatriz y enviarle la misma confirmación
-        const chats = await client.getChats()
-        const chatBeatriz = chats.find(c => {
-          const n = c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          return Object.keys(CHATS_DIRECTOS_GASTOS).some(k => n === k)
-        })
-        if (chatBeatriz) {
-          const numTag   = datos._numero ? `#${datos._numero}` : ''
-          const fechaTag = datos.fechaAbono ? `📂 ${datos.fechaAbono} · ${numTag}` : `📂 ${numTag}`
-          await client.sendMessage(chatBeatriz.id._serialized,
-            `💸 *Abono registrado*\n\n` +
-            `$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n\n` +
-            `${fechaTag}`
-          )
-        }
-      } catch (err) {
-        console.error('[ABONO] Error copiando a Beatriz:', err.message)
-      }
-    } else {
-      await confirmarYGuardar(grupoId, datos, remitente, archivoExcel)
-    }
+    // confirmarYGuardar llama a PERSONAS_PAGO, que maneja el espejo y comprobante de Beatriz automáticamente
+    await confirmarYGuardar(grupoId, datos, remitente, archivoExcel)
     return
   }
 
