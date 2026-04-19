@@ -2279,7 +2279,7 @@ TIPOS:
 
 EXTRAE:
 - "tipo": "Proyecto" | "Pendiente" | "Idea"
-- "titulo": frase corta descriptiva (máx 10 palabras, sin artículos innecesarios)
+- "titulo": frase corta descriptiva (máx 10 palabras, sin artículos innecesarios). NUNCA incluir verbos introductores como poner, agregar, anotar, crear, guardar, registrar, meter, apuntar, añadir — esos son instrucciones del usuario, no parte del título
 - "descripcion": detalle adicional si lo hay, si no null
 
 Si el mensaje NO es claramente un proyecto/pendiente/idea (ej: es un saludo, una pregunta genérica, etc.) → {"error":"no_es_proyecto"}
@@ -2291,6 +2291,9 @@ EJEMPLOS:
 - "idea: conectar el asistente al grupo de producción" → {"tipo":"Idea","titulo":"Conectar asistente al grupo de producción","descripcion":null}
 - "me queda pendiente llamar al contador mañana" → {"tipo":"Pendiente","titulo":"Llamar al contador","descripcion":null}
 - "proyecto: crear plantilla de cotización PDF para Terrano" → {"tipo":"Proyecto","titulo":"Plantilla cotización PDF Terrano","descripcion":null}
+- "poner pendiente bicicleta" → {"tipo":"Pendiente","titulo":"Bicicleta","descripcion":null}
+- "agrega pendiente llamar al banco" → {"tipo":"Pendiente","titulo":"Llamar al banco","descripcion":null}
+- "anota esto: revisar el contrato" → {"tipo":"Pendiente","titulo":"Revisar el contrato","descripcion":null}
 
 Mensaje: "${texto.replace(/"/g, "'")}"
 
@@ -2302,7 +2305,16 @@ Responde SOLO con JSON válido:`
     if (!resultado) return null
     const respuesta = resultado?.data?.choices?.[0]?.message?.content || ''
     const json = respuesta.replace(/```json\n?|\n?```/g, '').trim()
-    return JSON.parse(json)
+    const parsed = JSON.parse(json)
+    // Limpiar verbos introductores del título por si la IA los incluyó
+    if (parsed?.titulo) {
+      parsed.titulo = parsed.titulo
+        .replace(/^(poner|agregar|añadir|anotar|crear|guardar|registrar|recordar|meter|incluir|apuntar)\s+/i, '')
+        .replace(/\s+(como|de)\s+(pendiente|proyecto|idea|tarea)$/i, '')
+        .trim()
+      parsed.titulo = parsed.titulo.charAt(0).toUpperCase() + parsed.titulo.slice(1)
+    }
+    return parsed
   } catch { return null }
 }
 
