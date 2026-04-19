@@ -52,11 +52,25 @@ const PAGOS_BEATRIZ_EXCEL = path.join(GASTOS_DIR, 'pagos_beatriz.xlsx')
 // Grupo Interrapidísimo Envíos Priority AI — comprobante va al grupo
 const PAGOS_INTER_EXCEL = path.join(GASTOS_DIR, 'pagos_interrapidisimo.xlsx')
 
+// Proveedores de Priority (cueros) — cada uno recibe comprobante en su chat directo
+const NUMERO_ORLANDO       = '573104692008'
+const PAGOS_ORLANDO_EXCEL  = path.join(GASTOS_DIR, 'pagos_orlando.xlsx')
+const NUMERO_MAGDA         = '573128311794'
+const PAGOS_MAGDA_EXCEL    = path.join(GASTOS_DIR, 'pagos_magda.xlsx')
+const NUMERO_JUANCARLOS    = '573105542864'
+const PAGOS_JUANCARLOS_EXCEL = path.join(GASTOS_DIR, 'pagos_juancarlos.xlsx')
+const NUMERO_MAURICIO      = '573158727475'
+const PAGOS_MAURICIO_EXCEL = path.join(GASTOS_DIR, 'pagos_mauricio.xlsx')
+
 // Archivos que se espejan automáticamente a Finanzas Priority
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
 const MIRROR_A_FINANZAS = {
   [path.join(GASTOS_DIR, 'pagos_stella_valen.xlsx')]:  'Valen',
   [path.join(GASTOS_DIR, 'pagos_beatriz.xlsx')]:       'Beatriz',
+  [path.join(GASTOS_DIR, 'pagos_orlando.xlsx')]:       'Orlando',
+  [path.join(GASTOS_DIR, 'pagos_magda.xlsx')]:         'Magda',
+  [path.join(GASTOS_DIR, 'pagos_juancarlos.xlsx')]:    'Juan Carlos',
+  [path.join(GASTOS_DIR, 'pagos_mauricio.xlsx')]:      'Mauricio',
 }
 
 const GRUPOS_GASTOS = {
@@ -963,6 +977,30 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
                          || (xl === FINANZAS_PRIORITY_EXCEL && /\binter\b/i.test(txt)),
       destino: { grupo: 'interrapidisimo envios priority' },
       excel:   PAGOS_INTER_EXCEL,
+    },
+    {
+      nombre:  'Orlando',
+      trigger: (txt, xl) => /\b(orlando|bedoya)\b/i.test(txt),
+      destino: NUMERO_ORLANDO,
+      excel:   PAGOS_ORLANDO_EXCEL,
+    },
+    {
+      nombre:  'Magda',
+      trigger: (txt, xl) => /\bmagda\b/i.test(txt),
+      destino: NUMERO_MAGDA,
+      excel:   PAGOS_MAGDA_EXCEL,
+    },
+    {
+      nombre:  'Juan Carlos',
+      trigger: (txt, xl) => /\b(juan\s+carlos|cuero\s+pelo)\b/i.test(txt),
+      destino: NUMERO_JUANCARLOS,
+      excel:   PAGOS_JUANCARLOS_EXCEL,
+    },
+    {
+      nombre:  'Mauricio',
+      trigger: (txt, xl) => /\b(mauricio|ammi)\b/i.test(txt),
+      destino: NUMERO_MAURICIO,
+      excel:   PAGOS_MAURICIO_EXCEL,
     },
   ]
 
