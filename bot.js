@@ -1,5 +1,6 @@
-import express from 'express'
-import QRCode from 'qrcode'
+import pkg from 'whatsapp-web.js'
+const { Client, LocalAuth, MessageMedia } = pkg
+import qrcode from 'qrcode-terminal'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -18,7 +19,7 @@ const GMAIL_APP_PASS   = strip(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, '
 
 // Grupos donde al llegar una imagen, el bot la interpreta como comprobante
 // de pago y verifica en el correo de Bancolombia antes de registrar.
-const GRUPOS_VERIFICACION_PAGO = ['pagos priority ai']
+const GRUPOS_VERIFICACION_PAGO = ['daniela - verificacion pagos ai']
 
 // En Railway: PROYECTO_DIR=/app  (variable de entorno)
 // En Windows local: apunta a la carpeta del Drive
@@ -63,7 +64,7 @@ const NUMERO_MAURICIO      = '573158727475'
 const PAGOS_MAURICIO_EXCEL = path.join(GASTOS_DIR, 'pagos_mauricio.xlsx')
 
 // Archivos que se espejan automáticamente a Finanzas Priority
-const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
+const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'felipe_pagos.xlsx')
 const MIRROR_A_FINANZAS = {
   [path.join(GASTOS_DIR, 'pagos_stella_valen.xlsx')]:  'Valen',
   [path.join(GASTOS_DIR, 'pagos_beatriz.xlsx')]:       'Beatriz',
@@ -76,6 +77,8 @@ const MIRROR_A_FINANZAS = {
 const GRUPOS_GASTOS = {
   'gastos':                     path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
   'gastos ai':                  path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
+  'mariana - gastos personales ai': path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
+  'mariana gastos personales ai':   path.join(PROYECTO_DIR, 'datos', 'gastos_personales.xlsx'),
   'pago stella / juancho':      path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
   'pago stella/juancho':        path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
   'pago stella / juancho ai':   path.join(PROYECTO_DIR, 'datos', 'pagos_stella_juancho.xlsx'),
@@ -88,8 +91,8 @@ const GRUPOS_GASTOS = {
   'pago stella/nania':          path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'pago stella / nania ai':     path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'pago stella/nania ai':       path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
-  'finanzas priority ai':       path.join(PROYECTO_DIR, 'datos', 'finanzas_priority.xlsx'),
-  'pagos priority ai':          path.join(PROYECTO_DIR, 'datos', 'pagos_priority.xlsx'),
+  'felipe - pagos ai':       path.join(PROYECTO_DIR, 'datos', 'felipe_pagos.xlsx'),
+  'daniela - verificacion pagos ai': path.join(PROYECTO_DIR, 'datos', 'daniela_verificacion_pagos.xlsx'),
   'aura casa ai':               path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'aura casa':                  path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'chila pagos ai':             path.join(PROYECTO_DIR, 'datos', 'pagos_chila.xlsx'),
@@ -123,8 +126,8 @@ const GRUPOS_SOLO_DUENO = [
   'pr beatriz producción',
   'pr beatriz produccion ai',
   'pr beatriz producción ai',
-  'finanzas priority ai',
-  'pagos priority ai',
+  'felipe - pagos ai',
+  'daniela - verificacion pagos ai',
   'interrapidisimo envios priority ai',
   'interrapidisimo envios priority',
 ]
@@ -147,11 +150,19 @@ const GRUPOS_CATEGORIA_FIJA = {
   'pr beatriz producción':     'Abono',
   'pr beatriz produccion ai':  'Abono',
   'pr beatriz producción ai':  'Abono',
-  'finanzas priority ai':      'Pagos',
-  'pagos priority ai':         'Pagos',
+  'felipe - pagos ai':            'Pagos',
+  'daniela - verificacion pagos ai': 'Pagos',
 }
 
-const GRUPOS_ASISTENTE = ['mi asistente', 'mi asistente ai']
+const GRUPOS_ASISTENTE = ['mi asistente', 'mi asistente ai', 'sofia - mi asistente ai', 'sofia mi asistente ai']
+
+// ─── CAMILA — Bot de marketing de Priority Leather ──────────────
+// Grupo WhatsApp con comandos de texto/voz para análisis de pauta + contenido
+// Arquitectura: bot LOCAL (ARRANCAR_BOT_PERSONAL.bat) → spawn Python directo
+// Requisito: el bot debe correr en el PC donde están los scripts y el Chrome con sesión IG
+const GRUPOS_CAMILA = ['camila - marketing ai', 'camila marketing ai']
+const CAMILA_BASE_DIR = 'H:\\Mi unidad\\1. NEGOCIOS\\Claude\\bot-marketing-priority-ai'
+const CAMILA_PYTHON_EXE = 'C:\\Users\\Equipo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
 
 // ─── CATEGORÍAS ──────────────────────────────────────────────
 // El bot asigna automáticamente según palabras clave conocidas.
@@ -185,15 +196,10 @@ if (!GROQ_API_KEY) {
   console.log('ADVERTENCIA: Falta GROQ_API_KEY — funciones de IA desactivadas, pero el bot continúa')
 }
 
-// ─── EVOLUTION API ────────────────────────────────────────────
-const EVOLUTION_URL  = strip(process.env.EVOLUTION_URL)  || 'https://poetic-enthusiasm-production.up.railway.app'
-const EVOLUTION_KEY  = strip(process.env.EVOLUTION_KEY)  || 'Terrano2024SecretKey'
-const INSTANCE_NAME  = strip(process.env.INSTANCE_NAME)  || 'bot-personal'
-const WEBHOOK_URL    = strip(process.env.WEBHOOK_URL)    || ''
-const BOT_PORT       = process.env.PORT                  || 3000
+// ─── WHATSAPP-WEB.JS ─────────────────────────────────────────
 // Número personal del dueño — el bot responde cuando le escriben directamente
 const NUMERO_DUENO   = strip(process.env.NUMERO_DUENO)   || '573117647723'
-const DUENO_JID      = NUMERO_DUENO + '@s.whatsapp.net'
+const DUENO_JID      = NUMERO_DUENO + '@c.us'
 
 // Caché de JID de grupo → nombre en minúsculas
 const grupoJids = {}
@@ -201,78 +207,15 @@ const grupoJids = {}
 // Última imagen enviada por el dueño en cada grupo (para reenvío de comprobantes)
 const lastImagePerGroup = {}  // { [grupoId]: { msg, timestamp } }
 
-async function evGet(ruta) {
-  const r = await fetch(`${EVOLUTION_URL}${ruta}`, {
-    headers: { 'apikey': EVOLUTION_KEY },
-  })
-  return r.json()
-}
-
-async function evPost(ruta, body) {
-  const r = await fetch(`${EVOLUTION_URL}${ruta}`, {
-    method: 'POST',
-    headers: { 'apikey': EVOLUTION_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  return r.json()
-}
-
-// Evolution API acepta JIDs @g.us para grupos, pero para chats directos
-// prefiere el número limpio sin @s.whatsapp.net
-function normalizarChatId(chatId) {
-  if (chatId && chatId.endsWith('@s.whatsapp.net')) {
-    return chatId.replace('@s.whatsapp.net', '')
-  }
-  return chatId
-}
-
-async function enviarTexto(chatId, texto) {
-  try {
-    const number = normalizarChatId(chatId)
-    await evPost(`/message/sendText/${INSTANCE_NAME}`, { number, text: texto })
-  } catch (err) { console.error('[EVO] enviarTexto:', err.message) }
-}
-
-async function enviarArchivo(chatId, filePath, caption) {
-  try {
-    const number    = normalizarChatId(chatId)
-    const base64    = fs.readFileSync(filePath).toString('base64')
-    const fileName  = path.basename(filePath)
-    const mimetype  = fileName.endsWith('.xlsx')
-      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : 'application/octet-stream'
-    await evPost(`/message/sendMedia/${INSTANCE_NAME}`, {
-      number, mediatype: 'document', mimetype,
-      media: base64, fileName, caption: caption || fileName,
-    })
-  } catch (err) { console.error('[EVO] enviarArchivo:', err.message) }
-}
-
-// Objeto "client" compatible — reemplaza whatsapp-web.js sin tocar el resto del código
-const client = {
-  sendMessage: async (chatId, textOrMedia, options) => {
-    if (typeof textOrMedia === 'string') {
-      await enviarTexto(chatId, textOrMedia)
-    } else if (textOrMedia?._filePath) {
-      await enviarArchivo(chatId, textOrMedia._filePath, options?.caption)
-    }
+// Cliente whatsapp-web.js con sesión persistente
+// La sesión se guarda en C:\bot-personal\session (ver ARRANCAR_BOT_PERSONAL.bat que copia bot.js allí)
+const client = new Client({
+  authStrategy: new LocalAuth({ dataPath: path.join(__dirname, 'session') }),
+  puppeteer: {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   },
-  getChats: async () => {
-    try {
-      const grupos = await evGet(`/group/fetchAllGroups/${INSTANCE_NAME}?getParticipants=false`)
-      return (Array.isArray(grupos) ? grupos : []).map(g => ({
-        id: { _serialized: g.id },
-        name: g.subject || '',
-        isGroup: true,
-      }))
-    } catch { return [] }
-  },
-}
-
-// Reemplazo de MessageMedia.fromFilePath — devuelve objeto con _filePath
-const MessageMedia = {
-  fromFilePath: (filePath) => ({ _filePath: filePath }),
-}
+})
 
 // ─────────────────────────────────────────────────────────────
 
@@ -594,7 +537,7 @@ async function regenerarExcel(archivoExcel) {
   const lista = cargarDatos(archivoExcel)
   const wb    = new ExcelJS.Workbook()
   const esAbono = lista.length > 0 && (lista[0].categoria === 'Abono' || lista[0].categoria === 'Pagos')
-        || archivoExcel.includes('stella') || archivoExcel.includes('juancho') || archivoExcel.includes('finanzas_priority') || archivoExcel.includes('pagos_priority')
+        || archivoExcel.includes('stella') || archivoExcel.includes('juancho') || archivoExcel.includes('felipe_pagos') || archivoExcel.includes('daniela_verificacion_pagos')
 
   const ws    = wb.addWorksheet(esAbono ? 'Abonos' : 'Gastos')
 
@@ -2031,6 +1974,8 @@ console.log('  Grupos gastos:')
 for (const nombre of Object.keys(GRUPOS_GASTOS)) console.log(`    - "${nombre}"`)
 console.log('  Grupos asistente:')
 for (const nombre of GRUPOS_ASISTENTE) console.log(`    - "${nombre}"`)
+console.log('  Grupos Camila (marketing):')
+for (const nombre of GRUPOS_CAMILA) console.log(`    - "${nombre}"`)
 console.log('  Iniciando...')
 console.log('=========================================')
 
@@ -2050,86 +1995,27 @@ async function routearMensaje(msg, chat) {
   if (entradaDirecta) { await procesarGasto(msg, chat, entradaDirecta[1]); return }
   // Asistente
   if (GRUPOS_ASISTENTE.includes(nombre)) { await procesarAsistente(msg, chat); return }
+  // Camila (marketing Priority)
+  if (GRUPOS_CAMILA.includes(nombre)) { await procesarCamila(msg, chat); return }
 }
 
-// ─── OBTENER NOMBRE DE GRUPO POR JID ─────────────────────────
-async function obtenerNombreGrupo(jid) {
-  if (grupoJids[jid]) return grupoJids[jid]
+// ─── HANDLER DE MENSAJES (whatsapp-web.js) ───────────────────
+client.on('message_create', async (msg) => {
   try {
-    const info = await evGet(`/group/findGroupInfos/${INSTANCE_NAME}?groupJid=${encodeURIComponent(jid)}`)
-    const nombre = (info?.subject || '').toLowerCase()
-    if (nombre) grupoJids[jid] = nombre
-    return nombre
-  } catch { return '' }
-}
-
-// ─── EXPRESS WEBHOOK SERVER ───────────────────────────────────
-const app = express()
-app.use(express.json({ limit: '50mb' }))
-
-app.get('/', (_req, res) => res.send('Bot Personal OK ✅'))
-
-// Evolution API puede enviar a /webhook o a /webhook/messages-upsert
-async function manejarWebhook(req, res) {
-  res.sendStatus(200)  // responder rápido a Evolution API
-  try {
-    const payload = req.body
-    const evento = payload.event || req.params?.evento?.replace(/-/g, '.') || ''
-    if (evento && evento !== 'messages.upsert') return
-    const data = payload.data
-    if (!data?.key) return
-
-    const { key, message, messageType, pushName } = data
-    const chatId  = key.remoteJid
-    const fromMe  = key.fromMe === true
-    const isGroup = chatId?.endsWith('@g.us')
-
+    const chat = await msg.getChat()
+    const chatId = chat.id._serialized
     if (!chatId) return
-    if (chatId === 'status@broadcast') return
-    if (chatId.includes('broadcast')) return
+    if (chatId === 'status@broadcast' || chatId.includes('broadcast')) return
 
-    // Resolver nombre del chat
-    let chatName = ''
-    if (isGroup) {
-      chatName = await obtenerNombreGrupo(chatId)
-    } else {
-      // Chat directo: buscar en caché por JID o usar pushName
-      chatName = grupoJids[chatId] || (pushName || '').toLowerCase()
-    }
+    const isGroup  = chat.isGroup
+    const chatName = (chat.name || '').toLowerCase()
+    const fromMe   = msg.fromMe
+    const bodyText = msg.body || ''
 
-    // Texto del mensaje
-    const bodyText = message?.conversation
-      || message?.extendedTextMessage?.text
-      || ''
+    // Cachear nombre de grupo
+    if (isGroup && chatName) grupoJids[chatId] = chatName
 
-    // Tipo de media
-    const esAudio  = messageType === 'audioMessage' || messageType === 'pttMessage'
-    const esImagen = messageType === 'imageMessage'
-    const tieneMedia = esAudio || esImagen || messageType === 'documentMessage'
-
-    // Objeto compatible con el código existente
-    const msgObj = {
-      body:    bodyText,
-      fromMe,
-      from:    chatId,
-      to:      fromMe ? chatId : null,
-      author:  key.participant || key.remoteJid,
-      hasMedia: tieneMedia,
-      type:    messageType === 'pttMessage' ? 'ptt'
-             : messageType === 'audioMessage' ? 'audio'
-             : messageType === 'imageMessage' ? 'image' : 'chat',
-      async downloadMedia() {
-        const r = await evPost(`/chat/getBase64FromMediaMessage/${INSTANCE_NAME}`, { message: data })
-        return { data: r.base64, mimetype: r.mimetype || 'audio/ogg' }
-      },
-      async getContact() { return { pushname: pushName, name: pushName } },
-      async getChat()    { return chatObj },
-    }
-    const chatObj = {
-      id:      { _serialized: chatId },
-      name:    chatName,
-      isGroup,
-    }
+    const chatObj = { id: { _serialized: chatId }, name: chatName, isGroup }
 
     const EMOJIS_BOT = ['💸','💰','❓','📊','❌','✅','⚠','🔔','📅','🗑️','✏️','🎙️','📂','📌','🍽️','📋','🚀','⏳','💡','⏱️','🔴','🟢','🟠','🔵','🔍','🔎']
     const esRespuestaBot = EMOJIS_BOT.some(e => bodyText.startsWith(e))
@@ -2138,44 +2024,41 @@ async function manejarWebhook(req, res) {
       // Mensajes de otros en grupos
       if (GRUPOS_SOLO_DUENO.includes(chatName)) {
         const txt = bodyText.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        if (/^enviar\s+resumen$|^\/resumen$/.test(txt)) await routearMensaje(msgObj, chatObj)
+        if (/^enviar\s+resumen$|^\/resumen$/.test(txt)) await routearMensaje(msg, chatObj)
         return
       }
-      await routearMensaje(msgObj, chatObj)
+      await routearMensaje(msg, chatObj)
     } else if (fromMe && isGroup && !esRespuestaBot) {
-      // Mensajes del dueño en grupos
       console.log(`[BOT] Dueño en grupo "${chatName}": ${bodyText}`)
-      await routearMensaje(msgObj, chatObj)
+      await routearMensaje(msg, chatObj)
     } else if (fromMe && !isGroup && !esRespuestaBot) {
-      // Mensajes del dueño en chats directos (el bot escribe desde su propio número)
-      if (chatId === NUMERO_AURA + '@s.whatsapp.net') {
-        // Chat directo con Aura → acceso a pagos_aura.xlsx
+      // Mensajes del dueño en chats directos
+      if (chatId === NUMERO_AURA + '@c.us') {
         chatObj.name = 'aura casa ai'
         console.log(`[BOT] Dueño en chat Aura: ${bodyText}`)
-        await routearMensaje(msgObj, chatObj)
-      } else if (chatId === NUMERO_CHILA + '@s.whatsapp.net') {
-        // Chat directo con Chila → acceso a pagos_chila.xlsx
+        await routearMensaje(msg, chatObj)
+      } else if (chatId === NUMERO_CHILA + '@c.us') {
         chatObj.name = 'chila pagos ai'
         console.log(`[BOT] Dueño en chat Chila: ${bodyText}`)
-        await routearMensaje(msgObj, chatObj)
+        await routearMensaje(msg, chatObj)
       } else if (Object.keys(CHATS_DIRECTOS_GASTOS).some(n => chatName === n)) {
         console.log(`[BOT] Dueño en chat directo "${chatName}": ${bodyText}`)
-        await routearMensaje(msgObj, chatObj)
+        await routearMensaje(msg, chatObj)
       } else {
         console.log(`[WH] fromMe chat directo sin handler: chatName="${chatName}"`)
       }
     } else if (!fromMe && !isGroup && chatId === DUENO_JID && !esRespuestaBot) {
-      // Dueño le escribe al bot desde su número personal (chat directo inverso)
+      // Dueño le escribe al bot directo
       console.log(`[BOT] Dueño → bot directo: "${bodyText}"`)
       chatObj.name = 'mi asistente'
-      await routearMensaje(msgObj, chatObj)
+      await routearMensaje(msg, chatObj)
     } else {
       console.log(`[WH] ignorado: fromMe=${fromMe} isGroup=${isGroup} chatId=${chatId}`)
     }
   } catch (err) {
-    console.error('[WEBHOOK] Error:', err.message, '\n', err.stack)
+    console.error('[MSG] Error:', err.message, '\n', err.stack)
   }
-}
+})
 
 // ═══════════════════════════════════════════════════════════
 // ─── MÓDULO ASISTENTE PERSONAL ───────────────────────────────
@@ -2621,6 +2504,138 @@ async function regenerarExcelProyectos() {
     if (err.code === 'EBUSY') throw new Error('EXCEL_ABIERTO')
     throw err
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════
+//  CAMILA — Bot de marketing de Priority Leather
+//  Modo: LOCAL — spawn Python directo (requiere bot corriendo en PC)
+// ═══════════════════════════════════════════════════════════════
+
+async function procesarCamila(msg, chat) {
+  const grupoId = chat.id._serialized
+  let texto = msg.body || ''
+
+  // Transcribir audio si viene como nota de voz
+  if (msg.hasMedia && (msg.type === 'ptt' || msg.type === 'audio')) {
+    const media = await msg.downloadMedia()
+    texto = await transcribirAudio(media)
+    if (!texto) {
+      await client.sendMessage(grupoId, '❌ No pude escuchar el audio.')
+      return
+    }
+  }
+
+  // Si llega una imagen — placeholder para feature "replica anuncio"
+  if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker')) {
+    await client.sendMessage(grupoId,
+      'Recibí la imagen 📸\n\nLa feature de replicar anuncios con Nano Banana está en construcción. Próximamente te devolveré un anuncio nuevo con productos Priority basado en esta imagen.\n\nPor ahora puedo: *analiza ig* | *resumen* | *ayuda*')
+    return
+  }
+
+  if (!texto.trim()) return
+
+  const txLow = texto.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.!?,;]+$/, '')
+
+  // ── Comando: analiza ig ──────────────────────────────────────
+  if (/\b(analiza|analizar|analisis)\b.*\b(ig|instagram)\b/.test(txLow) || txLow === 'ig' || txLow === 'instagram') {
+    await client.sendMessage(grupoId, '🔍 Analizando @priorityleather... puede tardar 1-2 min. Abro Chrome aquí en el PC.')
+    const { spawn } = require('child_process')
+    const path = require('path')
+    const script = path.join(CAMILA_BASE_DIR, 'analizar_instagram.py')
+    const proc = spawn(CAMILA_PYTHON_EXE, ['-u', script], { shell: false })
+    let salida = ''
+    proc.stdout.on('data', d => { salida += d.toString() })
+    proc.stderr.on('data', d => { salida += d.toString() })
+    proc.on('close', async (code) => {
+      if (code !== 0) {
+        await client.sendMessage(grupoId, `❌ El análisis falló (código ${code}).\nÚltimas líneas:\n\`\`\`\n${salida.slice(-800)}\n\`\`\``)
+        return
+      }
+      // Extraer datos del output
+      const lineas = salida.split('\n')
+      const seg  = lineas.find(l => l.includes('Seguidores:'))
+      const pubs = lineas.find(l => l.includes('Publicaciones:'))
+      const idxTop = lineas.findIndex(l => l.includes('TOP 10'))
+      let msgOut = `✅ *Análisis Instagram @priorityleather*\n\n`
+      if (seg)  msgOut += seg.trim() + '\n'
+      if (pubs) msgOut += pubs.trim() + '\n'
+      msgOut += '\n*Top posts (por likes):*\n'
+      if (idxTop >= 0) {
+        const top = lineas.slice(idxTop + 1, idxTop + 12).filter(l => l.includes('likes')).slice(0, 5)
+        msgOut += top.map(l => '• ' + l.trim()).join('\n')
+      }
+      msgOut += '\n\nDatos completos en bot-marketing-priority-ai/instagram_data/'
+      await client.sendMessage(grupoId, msgOut)
+    })
+    return
+  }
+
+  // ── Comando: resumen ig (lee el último JSON guardado) ──
+  if (/\b(resumen|ultimo)\b.*\b(ig|instagram)\b/.test(txLow)) {
+    const fs = require('fs')
+    const path = require('path')
+    const dataDir = path.join(CAMILA_BASE_DIR, 'instagram_data')
+    try {
+      if (!fs.existsSync(dataDir)) {
+        await client.sendMessage(grupoId, '❌ Aún no hay análisis previos. Escribe *analiza ig* para generar uno.')
+        return
+      }
+      const archivos = fs.readdirSync(dataDir).filter(f => f.startsWith('analisis_') && f.endsWith('.json'))
+      if (archivos.length === 0) {
+        await client.sendMessage(grupoId, '❌ No hay análisis previos.')
+        return
+      }
+      archivos.sort().reverse()
+      const data = JSON.parse(fs.readFileSync(path.join(dataDir, archivos[0]), 'utf-8'))
+      const posts = (data.posts || []).filter(p => p.likes).sort((a, b) => b.likes - a.likes).slice(0, 5)
+      let msgOut = `📊 *Último análisis Instagram*\n(archivo: ${archivos[0]})\n\n`
+      msgOut += `Seguidores: ${data.perfil?.seguidores_texto || '?'} | Posts: ${data.total_posts_analizados || data.posts?.length}\n\n*Top 5:*\n`
+      for (const p of posts) msgOut += `• ${p.likes} likes | ${(p.fecha || '').slice(0, 10)}\n`
+      await client.sendMessage(grupoId, msgOut)
+    } catch (e) {
+      await client.sendMessage(grupoId, `❌ ${e.message}`)
+    }
+    return
+  }
+
+  // ── Comando: resumen / estado (campaña general) ──────────────
+  if (/\b(resumen|estado|status)\b/.test(txLow)) {
+    const fs = require('fs')
+    const path = require('path')
+    const anunciosDir = path.join(CAMILA_BASE_DIR, 'anuncios', 'finales')
+    let totalAnuncios = 0
+    try {
+      if (fs.existsSync(anunciosDir)) totalAnuncios = fs.readdirSync(anunciosDir).filter(f => f.endsWith('.png')).length
+    } catch (_) {}
+    await client.sendMessage(grupoId,
+      `📊 *Estado campaña Priority*\n\n` +
+      `• Presupuesto pauta: $3.000 USD / $12M COP\n` +
+      `• Duración: 1 mes\n` +
+      `• Anuncios listos: ${totalAnuncios}\n` +
+      `• Publicados en Meta: 0\n` +
+      `• Instagram: 56K seguidores\n\n` +
+      `Comandos: *analiza ig* | *resumen ig* | *ayuda*`)
+    return
+  }
+
+  // ── Comando: ayuda ───────────────────────────────────────────
+  if (/\b(ayuda|help|comandos)\b/.test(txLow)) {
+    await client.sendMessage(grupoId,
+      `👋 Hola, soy *Camila*.\n\nComandos disponibles:\n\n` +
+      `📱 *analiza ig* — análisis nuevo del Instagram (corre scraper, 1-2 min)\n` +
+      `📋 *resumen ig* — lee el último análisis guardado (instantáneo)\n` +
+      `📊 *resumen* — estado general de la campaña\n` +
+      `📸 *enviar imagen* — replicar anuncio de competidor (próximamente)\n` +
+      `❓ *ayuda* — este mensaje\n\n` +
+      `Puedes escribir o mandar nota de voz.`)
+    return
+  }
+
+  // Default
+  await client.sendMessage(grupoId,
+    `No entendí. Comandos: *analiza ig* | *resumen ig* | *resumen* | *ayuda*`)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -3158,10 +3173,10 @@ setInterval(async () => {
 }, 60 * 1000)
 
 // ════════════════════════════════════════════════════════════
-// ─── VERIFICACIÓN DE PAGOS POR COMPROBANTE (Pagos Priority AI)
+// ─── VERIFICACIÓN DE PAGOS POR COMPROBANTE (Daniela - Verificacion Pagos AI)
 // ════════════════════════════════════════════════════════════
 //
-// Cuando llega una imagen al grupo "Pagos Priority AI":
+// Cuando llega una imagen al grupo "Daniela - Verificacion Pagos AI":
 //   1. Gemini Vision extrae monto/fecha/tipo/referencia del comprobante
 //   2. Se busca en Gmail de sbgcorporation1 correos de Bancolombia / Nequi / Daviplata
 //      con ese monto en las últimas 24h
