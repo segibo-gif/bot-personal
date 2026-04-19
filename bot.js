@@ -837,7 +837,7 @@ async function guardarEnExcel(datos, remitente, archivoExcel) {
 // ─── CONFIRMAR Y GUARDAR ─────────────────────────────────────
 // ─── REENVIAR COMPROBANTE (número directo o grupo por nombre) ──
 // destino: número string "573146425027" | { grupo: "pago stella / valen ai" }
-async function enviarComprobante(grupoId, destino, nombre) {
+async function enviarComprobante(grupoId, destino, nombre, textoDestino = null) {
   const guardada = lastImagePerGroup[grupoId]
   if (!guardada) {
     await enviarTexto(grupoId, '⚠️ Gasto guardado, pero no encontré ningún comprobante. Envíe primero la imagen y luego el audio.')
@@ -870,15 +870,14 @@ async function enviarComprobante(grupoId, destino, nombre) {
     })
     delete lastImagePerGroup[grupoId]
     console.log(`[COMPROBANTE] Enviado a ${nombre}`)
-    await enviarTexto(grupoId, `✅ Comprobante enviado a ${nombre}.`)
+    if (nombre) await enviarTexto(grupoId, `✅ Comprobante enviado a ${nombre}.`)
+    // Si viene texto de confirmación, enviarlo también al destino
+    if (textoDestino) await enviarTexto(number, textoDestino)
   } catch (err) {
     console.error('[COMPROBANTE] Error:', err.message)
   }
 }
 
-async function enviarComprobanteAura(grupoId) {
-  await enviarComprobante(grupoId, NUMERO_AURA, 'Aura')
-}
 
 async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
   try {
@@ -924,7 +923,9 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
         await regenerarExcel(PAGOS_AURA_EXCEL)
       }
     } catch (err) { console.error('[AURA] Error espejo:', err.message) }
-    await enviarComprobanteAura(grupoId)
+    const numTagAura = datos._numero ? ` | #${datos._numero}` : ''
+    const textoAura  = `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagAura}`
+    await enviarComprobante(grupoId, NUMERO_AURA, 'Aura', textoAura)
   }
 
   const esChila = /\bchila\b/i.test(datos.descripcion)
@@ -939,11 +940,9 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
         await regenerarExcel(PAGOS_CHILA_EXCEL)
       }
     } catch (err) { console.error('[CHILA] Error espejo:', err.message) }
-    await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila')
-    // Notificar a Chila que el pago quedó registrado en su Excel
     const numTagChila = datos._numero ? ` | #${datos._numero}` : ''
-    await enviarTexto(NUMERO_CHILA,
-      `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagChila}`)
+    const textoChila  = `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagChila}`
+    await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila', textoChila)
   }
 
   const esValen = /\bvalen\b/i.test(datos.descripcion)
@@ -957,7 +956,9 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
         await regenerarExcel(PAGOS_STELLA_VALEN_EXCEL)
       }
     } catch (err) { console.error('[VALEN] Error espejo:', err.message) }
-    await enviarComprobante(grupoId, { grupo: 'pago stella / valen' }, 'Valen')
+    const numTagValen = datos._numero ? ` | #${datos._numero}` : ''
+    const textoValen  = `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagValen}`
+    await enviarComprobante(grupoId, { grupo: 'pago stella / valen' }, 'Valen', textoValen)
   }
 }
 
