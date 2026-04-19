@@ -499,10 +499,10 @@ MONTOS — usar siempre el número exacto que da el usuario, sin conversiones:
 
 CATEGORÍAS:
 - Hogar: mercado, domicilios de comida, arriendo, servicios (agua/luz/gas/internet), salud prepagada, farmacia, médico, aseo, limpieza, gasolina, taxi, Uber, bus, parqueadero, peaje, SOAT, taller
-- Hijos: colegio, guardería, útiles, Salvador, Violeta, pediatra, ropa niños, juguetes
+- Hijos: colegio, guardería, útiles, libros, cuadernos, colores, mochila, uniforme, Salvador, Violeta, pediatra, ropa niños, zapatos niños, juguetes — TODO lo que diga "hijos" va aquí
   → subcategoria "Salvador": si menciona solo a Salvador (bicicleta salvador, tenis salvador, cuadernos salvador)
   → subcategoria "Violeta": si menciona solo a Violeta (ropa violeta, zapatos violeta, violeta necesitaba)
-  → subcategoria "Ambos": si menciona ambos nombres, o dice "los niños", "los hijos", "los dos", "ambos", o es un gasto sin nombre específico como "colegio niños", "uniforme", "matrícula"
+  → subcategoria "Ambos": si menciona ambos nombres, o dice "los niños", "los hijos", "los dos", "ambos", o es un gasto sin nombre específico como "colegio niños", "uniforme", "matrícula", "libros hijos", "útiles"
 - Ocio: restaurante, almuerzo/cena fuera, bar, café, trago, cerveza, cine, viaje, hotel, peluquería, motilada, deporte, pádel, rumba, gym, gimnasio, entretenimiento
 - Otros: si no encaja claramente en ninguna
 
@@ -1922,8 +1922,18 @@ async function procesarGasto(msg, chat, archivoExcel) {
   // ── Verificar aprendizaje previo ──────────────────────────
   const categoriaAprendida = buscarEnAprendizaje(datos.descripcion)
   if (categoriaAprendida) {
-    datos.categoria = categoriaAprendida
-    console.log(`[APRENDIZAJE] Usando categoría aprendida: "${datos.descripcion}" → ${categoriaAprendida}`)
+    // No dejar que el aprendizaje anule a la IA cuando hay señal explícita de categoría en el texto
+    const textoN2 = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const haySeñalHijos = /\b(hijos?|salvador|violeta|los\s*ninos|los\s*dos|ambos)\b/.test(textoN2)
+    const haySeñalOcio  = /\b(restaurante|resto|bar|cine|viaje|rumba|gym|gimnasio)\b/.test(textoN2)
+    const categoriaProtegida = (haySeñalHijos && datos.categoria === 'Hijos')
+                             || (haySeñalOcio  && datos.categoria === 'Ocio')
+    if (!categoriaProtegida) {
+      datos.categoria = categoriaAprendida
+      console.log(`[APRENDIZAJE] Usando categoría aprendida: "${datos.descripcion}" → ${categoriaAprendida}`)
+    } else {
+      console.log(`[APRENDIZAJE] Señal explícita en texto protege categoría: "${datos.descripcion}" → ${datos.categoria} (aprendizaje decía ${categoriaAprendida})`)
+    }
   }
 
   // ── Pagos a Aura → siempre Hogar (tiene prioridad sobre aprendizaje) ──
