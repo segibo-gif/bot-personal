@@ -940,6 +940,10 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
       }
     } catch (err) { console.error('[CHILA] Error espejo:', err.message) }
     await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila')
+    // Notificar a Chila que el pago quedó registrado en su Excel
+    const numTagChila = datos._numero ? ` | #${datos._numero}` : ''
+    await enviarTexto(NUMERO_CHILA,
+      `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagChila}`)
   }
 
   const esValen = /\bvalen\b/i.test(datos.descripcion)
