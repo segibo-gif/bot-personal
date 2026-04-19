@@ -18,7 +18,7 @@ const GMAIL_APP_PASS   = strip(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, '
 
 // Grupos donde al llegar una imagen, el bot la interpreta como comprobante
 // de pago y verifica en el correo de Bancolombia antes de registrar.
-const GRUPOS_VERIFICACION_PAGO = ['finanzas priority ai']
+const GRUPOS_VERIFICACION_PAGO = ['pagos priority ai']
 
 // En Railway: PROYECTO_DIR=/app  (variable de entorno)
 // En Windows local: apunta a la carpeta del Drive
@@ -75,6 +75,7 @@ const GRUPOS_GASTOS = {
   'pago stella / nania ai':     path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'pago stella/nania ai':       path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'finanzas priority ai':       path.join(PROYECTO_DIR, 'datos', 'finanzas_priority.xlsx'),
+  'pagos priority ai':          path.join(PROYECTO_DIR, 'datos', 'pagos_priority.xlsx'),
   'aura casa ai':               path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'aura casa':                  path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'chila pagos ai':             path.join(PROYECTO_DIR, 'datos', 'pagos_chila.xlsx'),
@@ -109,6 +110,7 @@ const GRUPOS_SOLO_DUENO = [
   'pr beatriz produccion ai',
   'pr beatriz producción ai',
   'finanzas priority ai',
+  'pagos priority ai',
   'interrapidisimo envios priority ai',
   'interrapidisimo envios priority',
 ]
@@ -132,6 +134,7 @@ const GRUPOS_CATEGORIA_FIJA = {
   'pr beatriz produccion ai':  'Abono',
   'pr beatriz producción ai':  'Abono',
   'finanzas priority ai':      'Pagos',
+  'pagos priority ai':         'Pagos',
 }
 
 const GRUPOS_ASISTENTE = ['mi asistente', 'mi asistente ai']
@@ -577,7 +580,7 @@ async function regenerarExcel(archivoExcel) {
   const lista = cargarDatos(archivoExcel)
   const wb    = new ExcelJS.Workbook()
   const esAbono = lista.length > 0 && (lista[0].categoria === 'Abono' || lista[0].categoria === 'Pagos')
-        || archivoExcel.includes('stella') || archivoExcel.includes('juancho') || archivoExcel.includes('finanzas_priority')
+        || archivoExcel.includes('stella') || archivoExcel.includes('juancho') || archivoExcel.includes('finanzas_priority') || archivoExcel.includes('pagos_priority')
 
   const ws    = wb.addWorksheet(esAbono ? 'Abonos' : 'Gastos')
 
@@ -3117,34 +3120,44 @@ setInterval(async () => {
 }, 60 * 1000)
 
 // ════════════════════════════════════════════════════════════
-// ─── VERIFICACIÓN DE PAGOS POR COMPROBANTE (Finanzas Priority AI)
+// ─── VERIFICACIÓN DE PAGOS POR COMPROBANTE (Pagos Priority AI)
 // ════════════════════════════════════════════════════════════
 //
-// Cuando llega una imagen al grupo "Finanzas Priority AI":
+// Cuando llega una imagen al grupo "Pagos Priority AI":
 //   1. Gemini Vision extrae monto/fecha/tipo/referencia del comprobante
-//   2. Se busca en Gmail de sbgcorporation1 correos de Bancolombia
+//   2. Se busca en Gmail de sbgcorporation1 correos de Bancolombia / Nequi / Daviplata
 //      con ese monto en las últimas 24h
 //   3. Si match → registra en Excel y confirma con ✅
 //   4. Si no → reintenta 2 veces más, cada 5 min. Si nunca aparece → ⚠️
 
+// Modelos de visión en orden de preferencia. Si uno falla, se prueba el siguiente.
+// gemini-3-pro-image-preview es el que mejor lee comprobantes (usado por bot Sandra)
+const MODELOS_VISION = [
+  'gemini-3-pro-image-preview',
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+]
+
 async function extraerDatosComprobante(mediaData, mimetype) {
   if (!GEMINI_KEY) { console.error('[VERIF] Falta GEMINI_KEY'); return null }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
-  const prompt = `Esta es la captura de un comprobante de pago (transferencia bancaria, Nequi, Daviplata, PSE, consignación, etc).
 
-Extrae los siguientes datos. Responde SOLO con JSON válido, sin texto extra:
+  const prompt = `Esta imagen es una captura de pantalla de un comprobante de transacción bancaria o de billetera digital (Bancolombia, Nequi, Daviplata, PSE, transferencia, consignación, etc). Los colores pueden variar — fondo oscuro o claro.
 
+Tu tarea: extrae los datos y responde ÚNICAMENTE con un JSON válido (sin markdown, sin explicaciones).
+
+Estructura:
 {
-  "monto": <número entero sin puntos ni símbolos, ejemplo: 250000>,
-  "fecha": "DD/MM/YYYY" si se ve claramente, o null,
-  "tipo": "nequi" | "daviplata" | "transferencia" | "pse" | "consignacion" | "otro",
-  "referencia": "<número de aprobación o referencia>" o null,
-  "remitente": "<nombre o número de quien paga>" o null,
-  "destinatario": "<nombre o cuenta destino>" o null
+  "monto": <número entero, sin puntos ni símbolos. Ejemplo: si dice "$ 2.500.000" devuelve 2500000>,
+  "fecha": "<DD/MM/YYYY si se lee, o null>",
+  "tipo": "<bancolombia | nequi | daviplata | transferencia | pse | consignacion | otro>",
+  "referencia": "<número de comprobante/aprobación/referencia, o null>",
+  "remitente": "<nombre de quien envía, o null>",
+  "destinatario": "<nombre o cuenta de quien recibe, o null>"
 }
 
-Si la imagen NO es un comprobante de pago, responde exactamente:
-{"error":"no es comprobante"}`
+Si la imagen claramente NO contiene datos de una transacción de dinero (foto personal, meme, captura de otra app), responde: {"error":"no es comprobante"}
+
+Si hay ALGUNA cifra de dinero visible, intenta extraerla. Mejor extraer lo que se pueda que rechazar.`
 
   const body = {
     contents: [{
@@ -3154,24 +3167,54 @@ Si la imagen NO es un comprobante de pago, responde exactamente:
       ]
     }]
   }
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-    const json = await resp.json()
-    const txt  = json.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const match = txt.match(/\{[\s\S]*\}/)
-    if (!match) { console.error('[VERIF] Gemini no devolvió JSON:', txt.slice(0, 200)); return null }
-    return JSON.parse(match[0])
-  } catch (err) {
-    console.error('[VERIF] Error Gemini Vision:', err.message)
-    return null
+
+  for (const modelo of MODELOS_VISION) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${GEMINI_KEY}`
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const json = await resp.json()
+      // Si el modelo no existe o falla, probar el siguiente
+      if (json.error) {
+        console.log(`[VERIF] ${modelo} no disponible (${json.error.code || ''}): ${(json.error.message || '').slice(0, 100)}`)
+        continue
+      }
+      const txt  = json.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      console.log(`[VERIF] ${modelo} respondió: ${txt.slice(0, 300)}`)
+      // Quitar markdown ```json ... ``` si lo hay
+      const limpio = txt.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+      const match = limpio.match(/\{[\s\S]*\}/)
+      if (!match) { console.error(`[VERIF] ${modelo} no devolvió JSON parseable`); continue }
+      try {
+        return JSON.parse(match[0])
+      } catch (parseErr) {
+        console.error(`[VERIF] ${modelo} JSON inválido:`, parseErr.message)
+        continue
+      }
+    } catch (err) {
+      console.error(`[VERIF] Error con ${modelo}:`, err.message)
+      continue
+    }
   }
+  return null
 }
 
-async function buscarPagoEnBancolombia(montoBuscado) {
+// Remitentes que el bot consulta para verificar pagos
+// Cada proveedor puede buscarse por remitente (from) o por asunto (subject)
+// Nequi personal y Daviplata no envían correos — se reenvían los SMS con
+// la app SMS Forwarder al Gmail, y el bot los busca por asunto:
+//   SMS 85954 (Nequi)                        → asunto "Nequi SMS"
+//   SMS 85888 / 87718 / 89899 (Daviplata)    → asunto "Daviplata SMS"
+const REMITENTES_PAGO = [
+  { nombre: 'Bancolombia', tipo: 'from',    valor: 'bancolombia'   },
+  { nombre: 'Nequi',       tipo: 'subject', valor: 'Nequi SMS'     },
+  { nombre: 'Daviplata',   tipo: 'subject', valor: 'Daviplata SMS' },
+]
+
+async function buscarPagoEnCorreo(montoBuscado) {
   if (!GMAIL_USER || !GMAIL_APP_PASS) {
     console.error('[VERIF] Falta GMAIL_USER o GMAIL_APP_PASSWORD')
     return null
@@ -3188,10 +3231,6 @@ async function buscarPagoEnBancolombia(montoBuscado) {
     const lock = await imap.getMailboxLock('INBOX')
     try {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-      // Buscar correos de Bancolombia en las últimas 24h
-      const uids = await imap.search({ from: 'bancolombia', since })
-      console.log(`[VERIF] Correos Bancolombia últimas 24h: ${uids.length}`)
-      if (!uids.length) return null
 
       const montoFmt = montoBuscado.toLocaleString('es-CO')  // "1.250.000"
       const montoRaw = String(montoBuscado)                   // "1250000"
@@ -3203,16 +3242,26 @@ async function buscarPagoEnBancolombia(montoBuscado) {
         new RegExp('valor\\s+de\\s+\\$?\\s*' + montoFmt.replace(/\./g, '\\.'), 'i'),
       ]
 
-      // Revisar los 20 más recientes
-      const recientes = uids.slice(-20).reverse()
-      for (const uid of recientes) {
-        const m = await imap.fetchOne(uid, { source: true, envelope: true })
-        const raw = m.source.toString('utf8')
-        if (patrones.some(p => p.test(raw))) {
-          return {
-            fecha:   m.envelope.date,
-            asunto:  m.envelope.subject,
-            uid,
+      // Revisar cada proveedor en orden — el primer match gana
+      for (const { nombre, tipo, valor } of REMITENTES_PAGO) {
+        const criterio = tipo === 'subject'
+          ? { subject: valor, since }
+          : { from: valor, since }
+        const uids = await imap.search(criterio)
+        console.log(`[VERIF] Correos ${nombre} últimas 24h: ${uids.length}`)
+        if (!uids.length) continue
+
+        const recientes = uids.slice(-20).reverse()
+        for (const uid of recientes) {
+          const m = await imap.fetchOne(uid, { source: true, envelope: true })
+          const raw = m.source.toString('utf8')
+          if (patrones.some(p => p.test(raw))) {
+            return {
+              proveedor: nombre,
+              fecha:     m.envelope.date,
+              asunto:    m.envelope.subject,
+              uid,
+            }
           }
         }
       }
@@ -3261,7 +3310,7 @@ async function verificarPagoDesdeImagen(msg, chat, archivoExcel) {
   for (let intento = 1; intento <= 3; intento++) {
     if (intento === 1) {
       await client.sendMessage(grupoId,
-        `🔎 Buscando *$${montoNum.toLocaleString('es-CO')}* en correos de Bancolombia...`
+        `🔎 Buscando *$${montoNum.toLocaleString('es-CO')}* en correos de Bancolombia, Nequi y Daviplata...`
       )
     } else {
       await client.sendMessage(grupoId,
@@ -3270,7 +3319,7 @@ async function verificarPagoDesdeImagen(msg, chat, archivoExcel) {
       await new Promise(r => setTimeout(r, 5 * 60 * 1000))
     }
 
-    const match = await buscarPagoEnBancolombia(montoNum)
+    const match = await buscarPagoEnCorreo(montoNum)
     if (match) {
       // Si Gemini no sacó fecha del comprobante, usar la del correo del banco
       let fechaFinal = datos.fecha
@@ -3299,10 +3348,11 @@ async function verificarPagoDesdeImagen(msg, chat, archivoExcel) {
       }
       const numTag   = registro._numero ? `#${registro._numero}` : ''
       const fechaTag = fechaFinal ? `📂 ${fechaFinal} · ${numTag}` : `📂 ${numTag}`
+      const provTag  = match.proveedor ? `✓ Confirmado en ${match.proveedor}\n\n` : ''
       await client.sendMessage(grupoId,
         `✅ *Pago verificado*\n\n` +
         `$${montoNum.toLocaleString('es-CO')} — ${descBase}\n\n` +
-        `${fechaTag}`
+        `${provTag}${fechaTag}`
       )
       return
     }
@@ -3311,7 +3361,7 @@ async function verificarPagoDesdeImagen(msg, chat, archivoExcel) {
   // Después de 3 intentos sin éxito
   await client.sendMessage(grupoId,
     `⚠️ *No verificado*\n\n` +
-    `No encontré el pago de $${montoNum.toLocaleString('es-CO')} en los correos de Bancolombia de las últimas 24h.\n\n` +
+    `No encontré el pago de $${montoNum.toLocaleString('es-CO')} en correos de Bancolombia, Nequi ni Daviplata de las últimas 24h.\n\n` +
     `Revisa manualmente. El comprobante dice:\n` +
     `• Tipo: ${datos.tipo || 'N/A'}\n` +
     (datos.referencia ? `• Ref: ${datos.referencia}\n` : '') +

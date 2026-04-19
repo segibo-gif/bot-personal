@@ -7,3 +7,6 @@ QR_PERSONAL.png
 *.log
 .wwebjs_auth/
 .wwebjs_cache/
+# Archivos locales con secretos — no subir al repo público
+ARRANCAR_BOT_PERSONAL.bat
+restore_datos.ps1
