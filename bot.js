@@ -1898,13 +1898,17 @@ async function procesarGasto(msg, chat, archivoExcel) {
     return
   }
   if (datos.error) {
-    await client.sendMessage(grupoId,
-      `💸 No registré ningún gasto — faltó el monto.\n\n` +
-      `Dime cuánto fue, por ejemplo:\n` +
-      `• _"almuerzo 15000"_\n` +
-      `• _"taxi 8 lucas"_\n` +
-      `• _"gasté 50 en gasolina"_`
-    )
+    // En grupos de chat mixto (Beatriz, Interrapidísimo) se ignora silenciosamente
+    const GRUPOS_SILENCIOSOS = [PAGOS_BEATRIZ_EXCEL, PAGOS_INTER_EXCEL]
+    if (!GRUPOS_SILENCIOSOS.includes(archivoExcel)) {
+      await client.sendMessage(grupoId,
+        `💸 No registré ningún gasto — faltó el monto.\n\n` +
+        `Dime cuánto fue, por ejemplo:\n` +
+        `• _"almuerzo 15000"_\n` +
+        `• _"taxi 8 lucas"_\n` +
+        `• _"gasté 50 en gasolina"_`
+      )
+    }
     return
   }
 
