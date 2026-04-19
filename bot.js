@@ -49,6 +49,9 @@ const PAGOS_STELLA_VALEN_EXCEL = path.join(GASTOS_DIR, 'pagos_stella_valen.xlsx'
 const NUMERO_BEATRIZ      = '573206917024'
 const PAGOS_BEATRIZ_EXCEL = path.join(GASTOS_DIR, 'pagos_beatriz.xlsx')
 
+// Grupo Interrapidísimo Envíos Priority AI — comprobante va al grupo
+const PAGOS_INTER_EXCEL = path.join(GASTOS_DIR, 'pagos_interrapidisimo.xlsx')
+
 // Archivos que se espejan automáticamente a Finanzas Priority
 const FINANZAS_PRIORITY_EXCEL = path.join(GASTOS_DIR, 'finanzas_priority.xlsx')
 const MIRROR_A_FINANZAS = {
@@ -75,6 +78,8 @@ const GRUPOS_GASTOS = {
   'aura casa ai':               path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'aura casa':                  path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'chila pagos ai':             path.join(PROYECTO_DIR, 'datos', 'pagos_chila.xlsx'),
+  'interrapidisimo envios priority ai': path.join(PROYECTO_DIR, 'datos', 'pagos_interrapidisimo.xlsx'),
+  'interrapidisimo envios priority':    path.join(PROYECTO_DIR, 'datos', 'pagos_interrapidisimo.xlsx'),
 }
 
 // Conversaciones directas (chats individuales) que el bot también monitorea
@@ -104,6 +109,8 @@ const GRUPOS_SOLO_DUENO = [
   'pr beatriz produccion ai',
   'pr beatriz producción ai',
   'finanzas priority ai',
+  'interrapidisimo envios priority ai',
+  'interrapidisimo envios priority',
 ]
 
 // Grupos/chats con categoría fija — todo va a esa categoría sin preguntar
@@ -946,6 +953,13 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
       trigger: (txt, xl) => /\bbeatriz\b/i.test(txt),
       destino: NUMERO_BEATRIZ,
       excel:   PAGOS_BEATRIZ_EXCEL,
+    },
+    {
+      nombre:  'Interrapidísimo',
+      trigger: (txt, xl) => /\binterrapid/i.test(txt)
+                         || (xl === FINANZAS_PRIORITY_EXCEL && /\binter\b/i.test(txt)),
+      destino: { grupo: 'interrapidisimo envios priority' },
+      excel:   PAGOS_INTER_EXCEL,
     },
   ]
 
