@@ -1146,8 +1146,10 @@ async function ejecutarEdicion(edicion, archivoExcel, grupoId) {
     entrada.descripcion = edicion.valor_nuevo
     guardarDatos(lista, archivoExcel)
     await regenerarExcel(archivoExcel)
+    const numTagD  = entrada.numero ? ` #${entrada.numero}` : ''
+    const montoTagD = `$${Math.abs(entrada.monto).toLocaleString('es-CO')}`
     await client.sendMessage(grupoId,
-      `✅ *Corregido*\n_${descAnterior}_ → *${entrada.descripcion}*`
+      `✅ *Corregido${numTagD}*\n\n_${descAnterior}_ → *${entrada.descripcion}*\n${montoTagD}`
     )
   }
 }
@@ -1192,15 +1194,18 @@ async function ejecutarAccionConfirmada(pendAccion, grupoId) {
       entrada.monto  = entrada.monto < 0 ? -Math.abs(valorNuevo) : Math.abs(valorNuevo)
       guardarDatos(lista, archivoExcel)
       await regenerarExcel(archivoExcel)
+      const numTagM = entrada.numero ? ` #${entrada.numero}` : ''
       await client.sendMessage(grupoId,
-        `✅ *Corregido*\n_${entrada.descripcion}_\n$${Math.abs(anterior).toLocaleString('es-CO')} → *$${Math.abs(entrada.monto).toLocaleString('es-CO')}*`)
+        `✅ *Corregido${numTagM}*\n\n${entrada.descripcion}\n$${Math.abs(anterior).toLocaleString('es-CO')} → *$${Math.abs(entrada.monto).toLocaleString('es-CO')}*`)
     } else if (accion === 'corregir_categoria') {
       entrada.categoria = valorNuevo
       guardarDatos(lista, archivoExcel)
       await regenerarExcel(archivoExcel)
       aprenderCategoria(entrada.descripcion, valorNuevo)
+      const numTagC  = entrada.numero ? ` #${entrada.numero}` : ''
+      const montoTagC = `$${Math.abs(entrada.monto).toLocaleString('es-CO')}`
       await client.sendMessage(grupoId,
-        `✅ *Corregido*\n_${entrada.descripcion}_\n${catAnterior} → *${entrada.categoria}*`)
+        `✅ *Corregido${numTagC}*\n\n${entrada.descripcion} — ${montoTagC}\n${catAnterior} → *${entrada.categoria}*`)
     }
   } catch (err) {
     if (err.message === 'EXCEL_ABIERTO') {
