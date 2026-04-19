@@ -912,53 +912,49 @@ async function confirmarYGuardar(grupoId, datos, remitente, archivoExcel) {
     )
   }
 
-  // ── Espejo + comprobante (aplica para cualquier categoría) ────
-  if (/\baura\b/i.test(datos.descripcion)) {
-    try {
-      if (archivoExcel !== PAGOS_AURA_EXCEL) {
-        const lista = cargarDatos(PAGOS_AURA_EXCEL)
-        const num   = lista.length > 0 ? Math.max(...lista.map(e => e.numero || 0)) + 1 : 1
-        lista.push({ ...datos, id: (Date.now()+2).toString(), numero: num })
-        guardarDatos(lista, PAGOS_AURA_EXCEL)
-        await regenerarExcel(PAGOS_AURA_EXCEL)
-      }
-    } catch (err) { console.error('[AURA] Error espejo:', err.message) }
-    const numTagAura = datos._numero ? ` | #${datos._numero}` : ''
-    const textoAura  = `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagAura}`
-    await enviarComprobante(grupoId, NUMERO_AURA, 'Aura', textoAura)
-  }
+  // ── Espejo + comprobante por persona ─────────────────────────
+  // TABLA MAESTRA: agregar aquí para sumar personas nuevas.
+  // trigger(texto, excel): condición para activar
+  // destino: número string → chat directo | { grupo: "..." } → grupo por nombre
+  // excel: archivo donde se espeja el pago
+  const PERSONAS_PAGO = [
+    {
+      nombre:  'Aura',
+      trigger: (txt, xl) => /\baura\b/i.test(txt),
+      destino: NUMERO_AURA,
+      excel:   PAGOS_AURA_EXCEL,
+    },
+    {
+      nombre:  'Chila',
+      trigger: (txt, xl) => /\bchila\b/i.test(txt)
+                         || (xl === FINANZAS_PRIORITY_EXCEL && /\bquincena\b/i.test(txt)),
+      destino: NUMERO_CHILA,
+      excel:   PAGOS_CHILA_EXCEL,
+    },
+    {
+      nombre:  'Valen',
+      trigger: (txt, xl) => /\bvalen\b/i.test(txt),
+      destino: { grupo: 'pago stella / valen' },
+      excel:   PAGOS_STELLA_VALEN_EXCEL,
+    },
+  ]
 
-  const esChila = /\bchila\b/i.test(datos.descripcion)
-    || (archivoExcel === FINANZAS_PRIORITY_EXCEL && /\bquincena\b/i.test(datos.descripcion))
-  if (esChila) {
+  for (const persona of PERSONAS_PAGO) {
+    if (!persona.trigger(datos.descripcion, archivoExcel)) continue
+    // Espejo en su Excel (si no viene ya de ahí)
     try {
-      if (archivoExcel !== PAGOS_CHILA_EXCEL) {
-        const lista = cargarDatos(PAGOS_CHILA_EXCEL)
+      if (archivoExcel !== persona.excel) {
+        const lista = cargarDatos(persona.excel)
         const num   = lista.length > 0 ? Math.max(...lista.map(e => e.numero || 0)) + 1 : 1
-        lista.push({ ...datos, id: (Date.now()+3).toString(), numero: num })
-        guardarDatos(lista, PAGOS_CHILA_EXCEL)
-        await regenerarExcel(PAGOS_CHILA_EXCEL)
+        lista.push({ ...datos, id: Date.now().toString(), numero: num })
+        guardarDatos(lista, persona.excel)
+        await regenerarExcel(persona.excel)
       }
-    } catch (err) { console.error('[CHILA] Error espejo:', err.message) }
-    const numTagChila = datos._numero ? ` | #${datos._numero}` : ''
-    const textoChila  = `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagChila}`
-    await enviarComprobante(grupoId, NUMERO_CHILA, 'Chila', textoChila)
-  }
-
-  const esValen = /\bvalen\b/i.test(datos.descripcion)
-  if (esValen) {
-    try {
-      if (archivoExcel !== PAGOS_STELLA_VALEN_EXCEL) {
-        const lista = cargarDatos(PAGOS_STELLA_VALEN_EXCEL)
-        const num   = lista.length > 0 ? Math.max(...lista.map(e => e.numero || 0)) + 1 : 1
-        lista.push({ ...datos, id: (Date.now()+4).toString(), numero: num })
-        guardarDatos(lista, PAGOS_STELLA_VALEN_EXCEL)
-        await regenerarExcel(PAGOS_STELLA_VALEN_EXCEL)
-      }
-    } catch (err) { console.error('[VALEN] Error espejo:', err.message) }
-    const numTagValen = datos._numero ? ` | #${datos._numero}` : ''
-    const textoValen  = `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTagValen}`
-    await enviarComprobante(grupoId, { grupo: 'pago stella / valen' }, 'Valen', textoValen)
+    } catch (err) { console.error(`[${persona.nombre.toUpperCase()}] Error espejo:`, err.message) }
+    // Comprobante + confirmación
+    const numTag = datos._numero ? ` | #${datos._numero}` : ''
+    const textoConfirmacion = `✅ *Pago registrado*\n\n$${Math.abs(datos.monto).toLocaleString('es-CO')} — ${datos.descripcion}\n📂 ${datos.categoria}${numTag}`
+    await enviarComprobante(grupoId, persona.destino, persona.nombre, textoConfirmacion)
   }
 }
 
