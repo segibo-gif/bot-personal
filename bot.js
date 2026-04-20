@@ -6,11 +6,12 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import ExcelJS from 'exceljs'
 import { ImapFlow } from 'imapflow'
+import http from 'http'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ─── CONFIGURACION ───────────────────────────────────────────
-// strip() elimina comillas que Railway a veces incluye en los valores
+// strip() elimina comillas que puedan haber quedado en los valores de env vars
 const strip = v => (v || '').replace(/^["']|["']$/g, '').trim()
 const GROQ_API_KEY     = strip(process.env.GROQ_API_KEY)
 const GEMINI_KEY       = strip(process.env.GEMINI_KEY)
@@ -19,13 +20,12 @@ const GMAIL_APP_PASS   = strip(process.env.GMAIL_APP_PASSWORD).replace(/\s+/g, '
 
 // Grupos donde al llegar una imagen, el bot la interpreta como comprobante
 // de pago y verifica en el correo de Bancolombia antes de registrar.
-const GRUPOS_VERIFICACION_PAGO = ['daniela - verificacion pagos ai']
+const GRUPOS_VERIFICACION_PAGO = ['jorge - verificacion pagos ai']
 
-// En Railway: PROYECTO_DIR=/app  (variable de entorno)
-// En Windows local: apunta a la carpeta del Drive
+// PROYECTO_DIR: carpeta del Drive donde viven los datos (se define en ARRANCAR_BOT_PERSONAL.bat)
 const PROYECTO_DIR        = strip(process.env.PROYECTO_DIR) || '/app'
 const GASTOS_DIR          = path.join(PROYECTO_DIR, 'datos')
-const ASISTENTE_DIR       = GASTOS_DIR   // en Railway todo va en la misma carpeta
+const ASISTENTE_DIR       = GASTOS_DIR   // todo va en la misma carpeta
 const APRENDIZAJE_FILE    = path.join(GASTOS_DIR, 'aprendizaje.json')
 const PENDIENTE_FILE      = path.join(GASTOS_DIR, 'pendiente.json')
 const RECORDATORIOS_FILE  = path.join(ASISTENTE_DIR, 'recordatorios.json')
@@ -97,7 +97,7 @@ const GRUPOS_GASTOS = {
   'pago stella / nania ai':     path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'pago stella/nania ai':       path.join(PROYECTO_DIR, 'datos', 'pagos_stella_nania.xlsx'),
   'felipe - pagos ai':       path.join(PROYECTO_DIR, 'datos', 'felipe_pagos.xlsx'),
-  'daniela - verificacion pagos ai': path.join(PROYECTO_DIR, 'datos', 'daniela_verificacion_pagos.xlsx'),
+  'jorge - verificacion pagos ai': path.join(PROYECTO_DIR, 'datos', 'jorge_verificacion_pagos.xlsx'),
   'aura casa ai':               path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'aura casa':                  path.join(PROYECTO_DIR, 'datos', 'pagos_aura.xlsx'),
   'chila pagos ai':             path.join(PROYECTO_DIR, 'datos', 'pagos_chila.xlsx'),
@@ -132,7 +132,7 @@ const GRUPOS_SOLO_DUENO = [
   'pr beatriz produccion ai',
   'pr beatriz producción ai',
   'felipe - pagos ai',
-  'daniela - verificacion pagos ai',
+  'jorge - verificacion pagos ai',
   'interrapidisimo envios priority ai',
   'interrapidisimo envios priority',
 ]
@@ -156,7 +156,7 @@ const GRUPOS_CATEGORIA_FIJA = {
   'pr beatriz produccion ai':  'Abono',
   'pr beatriz producción ai':  'Abono',
   'felipe - pagos ai':            'Pagos',
-  'daniela - verificacion pagos ai': 'Pagos',
+  'jorge - verificacion pagos ai': 'Pagos',
 }
 
 const GRUPOS_ASISTENTE = ['mi asistente', 'mi asistente ai', 'sofia - mi asistente ai', 'sofia mi asistente ai']
@@ -191,7 +191,6 @@ console.log('=== STARTUP DEBUG ===')
 console.log('RAW_GROQ:', JSON.stringify(process.env.GROQ_API_KEY), 'len:', (process.env.GROQ_API_KEY||'').length)
 console.log('GROQ_API_KEY:', GROQ_API_KEY ? ('OK - ' + GROQ_API_KEY.substring(0,10) + '...') : 'VACIA')
 console.log('PROYECTO_DIR:', process.env.PROYECTO_DIR || '(no definida)')
-console.log('RAILWAY_ENV:', process.env.RAILWAY_ENVIRONMENT || '(no definida)')
 console.log('ALL_KEYS_COUNT:', Object.keys(process.env).length)
 console.log('ALL_KEYS:', Object.keys(process.env).sort().join(', '))
 console.log('NODE_ENV:', process.env.NODE_ENV || '(no definida)')
@@ -542,7 +541,7 @@ async function regenerarExcel(archivoExcel) {
   const lista = cargarDatos(archivoExcel)
   const wb    = new ExcelJS.Workbook()
   const esAbono = lista.length > 0 && (lista[0].categoria === 'Abono' || lista[0].categoria === 'Pagos')
-        || archivoExcel.includes('stella') || archivoExcel.includes('juancho') || archivoExcel.includes('felipe_pagos') || archivoExcel.includes('daniela_verificacion_pagos')
+        || archivoExcel.includes('stella') || archivoExcel.includes('juancho') || archivoExcel.includes('felipe_pagos') || archivoExcel.includes('jorge_verificacion_pagos')
 
   const ws    = wb.addWorksheet(esAbono ? 'Abonos' : 'Gastos')
 
@@ -2522,6 +2521,54 @@ async function regenerarExcelProyectos() {
 //  Modo: LOCAL — spawn Python directo (requiere bot corriendo en PC)
 // ═══════════════════════════════════════════════════════════════
 
+// Cache de última imagen enviada a Camila por grupo (para replicar/analizar después)
+// { [grupoId]: { path: '...', recibida_en: timestamp } }
+const ultimaImagenCamila = {}
+const CAMILA_IMAGEN_TTL_MIN = 30
+
+// Triggers de productos reconocidos (paralelos al MAPEO en replicar_anuncio.py)
+const CAMILA_PRODUCTOS_TRIGGERS = {
+  'bolso_tote':        ['tote', 'bolso tote', 'shopping'],
+  'bolso_media_luna':  ['media luna', 'half moon', 'crossbody', 'bandolera'],
+  'bolso_baul':        ['baul', 'bauleta', 'trunk'],
+  'maletin':           ['maletin', 'briefcase', 'ejecutivo', 'morral'],
+  'maleta':            ['maleta', 'suitcase', 'viaje', 'luggage'],
+  'delantal':          ['delantal', 'mandil', 'apron', 'bbq', 'barbero', 'tatuador', 'chef'],
+  'portapasaportes':   ['portapasaporte', 'porta pasaporte', 'pasaporte', 'passport'],
+  'billetera':         ['billetera', 'wallet'],
+  'estuche_cuchillos': ['cuchillo', 'knife'],
+}
+const CAMILA_PRODUCTOS_NOMBRES = {
+  'bolso_tote': 'Bolso Tote',
+  'bolso_media_luna': 'Bolso Media Luna',
+  'bolso_baul': 'Bolso Baúl',
+  'maletin': 'Maletín',
+  'maleta': 'Maleta',
+  'delantal': 'Delantal',
+  'portapasaportes': 'Porta Pasaportes',
+  'billetera': 'Billetera',
+  'estuche_cuchillos': 'Estuche para Cuchillos',
+}
+
+function camilaDetectarProducto(txLow) {
+  for (const [key, triggers] of Object.entries(CAMILA_PRODUCTOS_TRIGGERS)) {
+    for (const t of triggers) {
+      if (new RegExp(`\\b${t}\\b`).test(txLow)) return key
+    }
+  }
+  return null
+}
+
+function camilaDetectarCantidad(txLow) {
+  const numerales = { 'una': 1, 'un': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5, 'seis': 6 }
+  const m = txLow.match(/(\d+)\s*(?:copia|variante|version|replica)/)
+  if (m) return Math.min(6, Math.max(1, parseInt(m[1])))
+  for (const [palabra, n] of Object.entries(numerales)) {
+    if (new RegExp(`\\b${palabra}\\s+(copia|variante|version|replica)s?\\b`).test(txLow)) return n
+  }
+  return 1
+}
+
 async function procesarCamila(msg, chat) {
   const grupoId = chat.id._serialized
   let texto = msg.body || ''
@@ -2536,16 +2583,331 @@ async function procesarCamila(msg, chat) {
     }
   }
 
-  // Si llega una imagen — placeholder para feature "replica anuncio"
+  // ── Si llega una IMAGEN: guardarla en memoria y pedir instrucciones ──
   if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker')) {
-    await client.sendMessage(grupoId,
-      'Recibí la imagen 📸\n\nLa feature de replicar anuncios con Nano Banana está en construcción. Próximamente te devolveré un anuncio nuevo con productos Priority basado en esta imagen.\n\nPor ahora puedo: *analiza ig* | *resumen* | *ayuda*')
-    return
+    try {
+      const media = await msg.downloadMedia()
+      if (!media?.data) return
+
+      const fs_ = require('fs')
+      const path_ = require('path')
+      const tmpDir = path_.join(CAMILA_BASE_DIR, 'imagenes', 'recibidas')
+      fs_.mkdirSync(tmpDir, { recursive: true })
+      const ext = (media.mimetype || 'image/jpeg').includes('png') ? 'png' : 'jpg'
+      const fname = `recibida_${grupoId.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.${ext}`
+      const fpath = path_.join(tmpDir, fname)
+      fs_.writeFileSync(fpath, Buffer.from(media.data, 'base64'))
+
+      ultimaImagenCamila[grupoId] = { path: fpath, recibida_en: Date.now() }
+
+      // Si el caption ya trae una orden, procesarla directo en lugar de preguntar
+      const caption = (msg.body || '').trim()
+      if (caption) {
+        texto = caption  // caer al handler de texto más abajo
+      } else {
+        await client.sendMessage(grupoId,
+          '📸 *Imagen recibida.*\n\nDime qué hago:\n' +
+          '• *copia con el tote* — replica con ese producto\n' +
+          '• *3 copias con la billetera* — varias versiones\n' +
+          '• *analiza* — te digo qué producto, estilo y público vende\n' +
+          '• *pautas de esta empresa* — detecto la marca y busco sus anuncios activos en Meta Ad Library\n\n' +
+          '_(la imagen queda guardada 30 min)_')
+        return
+      }
+    } catch (e) {
+      await client.sendMessage(grupoId, `❌ No pude guardar la imagen: ${e.message}`)
+      return
+    }
   }
 
   if (!texto.trim()) return
 
   const txLow = texto.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.!?,;]+$/, '')
+
+  // ── Helper: verificar imagen reciente disponible ──
+  function hayImagenReciente() {
+    const reg = ultimaImagenCamila[grupoId]
+    if (!reg) return false
+    if (Date.now() - reg.recibida_en > CAMILA_IMAGEN_TTL_MIN * 60 * 1000) {
+      delete ultimaImagenCamila[grupoId]
+      return false
+    }
+    return true
+  }
+
+  // ── Comando: REPLICAR (copia/copias/replica/variante/fusila) ──
+  const esReplicar = /\b(copia|copias|replicar?|replica|replicas|fusil(a|ar)|variantes?|versiones?|versi[oó]n)\b/.test(txLow)
+  if (esReplicar) {
+    if (!hayImagenReciente()) {
+      await client.sendMessage(grupoId, '⚠️ No tengo imagen reciente. Mándame primero el screenshot del anuncio que quieres replicar.')
+      return
+    }
+    const productoKey = camilaDetectarProducto(txLow)
+    if (!productoKey) {
+      await client.sendMessage(grupoId,
+        '🤔 *¿Con cuál producto?* Dime uno:\n' +
+        '• tote | media luna | baúl\n' +
+        '• maletín | maleta\n' +
+        '• delantal | porta pasaportes\n' +
+        '• billetera | cuchillos\n\n' +
+        '_Ej: "2 copias con el tote"_')
+      return
+    }
+    const cantidad = camilaDetectarCantidad(txLow)
+    const imgPath = ultimaImagenCamila[grupoId].path
+    const nombreProd = CAMILA_PRODUCTOS_NOMBRES[productoKey]
+    await client.sendMessage(grupoId,
+      `🎨 Generando ${cantidad} ${cantidad === 1 ? 'copia' : 'copias'} con *${nombreProd}*...\n` +
+      `(~${cantidad * 30}s aprox)`)
+
+    const { spawn } = require('child_process')
+    const path_ = require('path')
+    const script = path_.join(CAMILA_BASE_DIR, 'replicar_anuncio.py')
+    const proc = spawn(CAMILA_PYTHON_EXE, [
+      '-u', script, imgPath,
+      '--producto', productoKey,
+      '--copias', String(cantidad),
+      '--caption', texto.trim().slice(0, 200),
+    ], { shell: false })
+
+    let salida = ''
+    proc.stdout.on('data', d => { salida += d.toString() })
+    proc.stderr.on('data', d => { salida += d.toString() })
+    proc.on('close', async (code) => {
+      const fsm = require('fs')
+      const m = salida.match(/RESULTADO_JSON:(\{.*\})/)
+      if (!m) {
+        await client.sendMessage(grupoId, `❌ Falló la generación.\n\`\`\`\n${salida.slice(-600)}\n\`\`\``)
+        return
+      }
+      let res
+      try { res = JSON.parse(m[1]) } catch (e) {
+        await client.sendMessage(grupoId, `❌ No pude parsear la respuesta.`)
+        return
+      }
+      if (!res.ok) {
+        await client.sendMessage(grupoId, `❌ ${res.error || 'error desconocido'}`)
+        return
+      }
+      const ana = res.analisis || {}
+      const resumen = `✅ *${res.copias_generadas}/${res.copias_solicitadas} copias con ${res.producto_priority}*\n\n` +
+        `*Análisis del original:*\n` +
+        `• Producto: ${ana.producto || '?'}\n` +
+        `• Estilo: ${ana.estilo || '?'}\n` +
+        `• Emoción: ${ana.emocion || '?'}\n` +
+        `• Audiencia: ${ana.audiencia || '?'}`
+      await client.sendMessage(grupoId, resumen)
+      // Enviar cada imagen generada
+      for (const salidaPath of (res.salidas || [])) {
+        try {
+          if (fsm.existsSync(salidaPath)) {
+            const media_ = MessageMedia.fromFilePath(salidaPath)
+            await client.sendMessage(grupoId, media_)
+          }
+        } catch (e) {
+          console.error('[CAMILA] Error enviando imagen:', e.message)
+        }
+      }
+    })
+    return
+  }
+
+  // ── Declarar flags de intención ANTES de los handlers ──
+  // Verbos/nouns de acción de auditoría (MUY amplio para cubrir sinónimos)
+  const ACCION_AUDITORIA = /\b(audit[oa]r?|auditori[ao]|analiz[oa]r?|analisis|analic[ea]|analizame|dato[s]?\s+(?:de|sobre)?|data\b|metrica[s]?|kpi[s]?|reporte|informe|revis[oa]r?|mir[oa]r?|examin[oa]r?|estudi[oa]r?|historial|history|performance|desempe[nñ]o|estado\s+de|como\s+va|rendimiento|numeros|cifras|resultados)\b/
+  const TARGET_PAUTA = /\b(pauta[s]?|anuncio[s]?|creativo[s]?|campa[nñ]a[s]?|ads|meta\s*ads|historico)\b/
+  const CONTEXTO_PROPIO = /\b(nuestra[s]?|nuestro[s]?|propia[s]?|propio[s]?|mi[s]?|priority|mia[s]?|mio[s]?)\b/
+
+  const esAuditoria =
+       (ACCION_AUDITORIA.test(txLow) && TARGET_PAUTA.test(txLow))
+    || (TARGET_PAUTA.test(txLow) && CONTEXTO_PROPIO.test(txLow))
+    || /\b(audita|analiza)\s+(?:la\s+)?pauta/.test(txLow)
+    || /\b(data|datos)\s+(?:de\s+)?(?:la\s+)?(pauta|ads|meta|anuncios?)/.test(txLow)
+
+  const esPautasComp = !esAuditoria
+    && TARGET_PAUTA.test(txLow)
+    && /\b(de|del)\s+/.test(txLow)
+    && !CONTEXTO_PROPIO.test(txLow)
+
+  const esPautasPropias = esAuditoria
+
+  // ── Comando: ANALIZAR imagen (Gemini Vision sobre imagen reciente) ──
+  // Solo dispara si hay imagen reciente Y el texto NO es una petición de auditoría de pauta propia
+  const esAnalizarImagen = !esAuditoria
+    && !esPautasComp
+    && /\b(analiza|analizame|analiza me|analisis|describe|descr[ií]beme|mira|vee|ve[aá]lo|describe|qu[eé]\s+ves)\b/.test(txLow)
+    && !/\b(ig|instagram|post|publicacion|cuenta)\b/.test(txLow)
+    && hayImagenReciente()
+  if (esAnalizarImagen) {
+    if (!hayImagenReciente()) {
+      await client.sendMessage(grupoId, '⚠️ No tengo imagen reciente. Mándame primero el screenshot.')
+      return
+    }
+    await client.sendMessage(grupoId, '🔍 Analizando imagen con Gemini Vision...')
+    const { spawn } = require('child_process')
+    const path_ = require('path')
+    const script = path_.join(CAMILA_BASE_DIR, 'replicar_anuncio.py')
+    const imgPath = ultimaImagenCamila[grupoId].path
+    const proc = spawn(CAMILA_PYTHON_EXE, ['-u', script, imgPath, '--solo-analisis'], { shell: false })
+    let salida = ''
+    proc.stdout.on('data', d => { salida += d.toString() })
+    proc.stderr.on('data', d => { salida += d.toString() })
+    proc.on('close', async () => {
+      const m = salida.match(/RESULTADO_JSON:(\{.*\})/)
+      if (!m) { await client.sendMessage(grupoId, `❌ Falló el análisis.\n\`\`\`${salida.slice(-500)}\`\`\``); return }
+      try {
+        const res = JSON.parse(m[1])
+        const ana = res.analisis || {}
+        let msgOut = `🔍 *Análisis de la imagen*\n\n`
+        if (ana.marca_visible) msgOut += `• *Marca:* ${ana.marca_visible}\n`
+        msgOut += `• *Producto:* ${ana.producto || '?'}\n`
+        msgOut += `• *Estilo visual:* ${ana.estilo || '?'}\n`
+        msgOut += `• *Paleta:* ${ana.paleta || '?'}\n`
+        msgOut += `• *Emoción:* ${ana.emocion || '?'}\n`
+        msgOut += `• *Público objetivo:* ${ana.audiencia || '?'}\n`
+        if (ana.copy_titular) msgOut += `\n💬 *Titular:* ${ana.copy_titular}\n`
+        if (ana.copy_texto)   msgOut += `📝 *Texto:* ${ana.copy_texto}\n`
+        if (ana.cta)          msgOut += `👉 *CTA:* ${ana.cta}\n`
+        msgOut += `\n_Si quieres replicarlo con un producto Priority, dime: "copia con el [tote/maletín/etc]"_`
+        await client.sendMessage(grupoId, msgOut)
+      } catch (e) {
+        await client.sendMessage(grupoId, `❌ Error parseando: ${e.message}`)
+      }
+    })
+    return
+  }
+
+  if (esPautasPropias) {
+    // Verificar si el token está configurado
+    const envToken = process.env.META_ACCESS_TOKEN || ''
+    const envAcct  = process.env.META_AD_ACCOUNT_ID || ''
+    if (!envToken || envToken === 'PEGUE_AQUI_SU_TOKEN' || !envAcct || envAcct === 'act_1234567890') {
+      await client.sendMessage(grupoId,
+        '⚠️ *Aún no tengo acceso a tu cuenta Meta Ads.*\n\n' +
+        'Para leer las métricas necesito:\n' +
+        '1. Un *System User access token* (scopes: ads_read + read_insights + business_management)\n' +
+        '2. El *Ad Account ID* (formato act_XXXXXXX)\n\n' +
+        'Paso a paso en: *bot-marketing-priority-ai/INSTRUCCIONES_META_TOKEN.md*\n\n' +
+        'Cuando los tengas, editas *ARRANCAR_BOT_PERSONAL.bat* y agregas:\n' +
+        '```\nset META_ACCESS_TOKEN=EAAxxx...\nset META_AD_ACCOUNT_ID=act_xxx\n```\n\n' +
+        'Reinicias el bot y me escribes *audita pauta*.')
+      return
+    }
+    await client.sendMessage(grupoId,
+      '🔍 *Iniciando auditoría Meta Ads*\n\n' +
+      'Bajando 24 meses de insights (puede tardar 5-15 min).\n' +
+      'Te mando el Excel cuando termine.')
+
+    const { spawn } = require('child_process')
+    const path_ = require('path')
+    const script = path_.join(CAMILA_BASE_DIR, 'meta_ads_auditor.py')
+    const proc = spawn(CAMILA_PYTHON_EXE, ['-u', script, '--meses', '24'], {
+      shell: false,
+      env: { ...process.env },
+    })
+    let salida = ''
+    proc.stdout.on('data', d => { salida += d.toString() })
+    proc.stderr.on('data', d => { salida += d.toString() })
+    proc.on('close', async (code) => {
+      const mr = salida.match(/RESULTADO_JSON:(\{[\s\S]*\})/)
+      if (!mr) {
+        await client.sendMessage(grupoId, `❌ La auditoría falló (code ${code}).\n\`\`\`${salida.slice(-800)}\`\`\``)
+        return
+      }
+      let res
+      try { res = JSON.parse(mr[1]) } catch { await client.sendMessage(grupoId, '❌ No pude parsear resultado.'); return }
+      if (!res.ok) { await client.sendMessage(grupoId, `❌ ${res.error || 'error'}`); return }
+
+      const fsm = require('fs')
+      let msg_ = `✅ *Auditoría Meta Ads completa*\n\n` +
+        `• Filas (ads-mes): ${res.filas}\n` +
+        `• Spend acumulado: ${res.spend?.toLocaleString('es-CO', { maximumFractionDigits: 0 })}\n` +
+        `• Revenue: ${res.revenue?.toLocaleString('es-CO', { maximumFractionDigits: 0 })}\n` +
+        `• *ROAS global: ${res.roas_global}*\n\n` +
+        `Excel: ${path_.basename(res.excel)}\n\n` +
+        `_Ahora corro el análisis (Fase 2). Dame 30s..._`
+      await client.sendMessage(grupoId, msg_)
+
+      // Enviar el Excel
+      try {
+        if (fsm.existsSync(res.excel)) {
+          await client.sendMessage(grupoId, MessageMedia.fromFilePath(res.excel),
+            { caption: '📊 Auditoría completa — Ads mensual, Top 20 por ROAS, Losers, Breakdowns' })
+        }
+      } catch (e) { console.error('[CAMILA] Error enviando Excel auditoría:', e.message) }
+    })
+    return
+  }
+
+  if (esPautasComp) {
+    // Extraer marca: lo que venga después de "de"
+    let marca = ''
+    const m = texto.match(/\b(?:de|del)\s+(?:la\s+|el\s+|los\s+|las\s+)?([A-Za-zÁ-Úá-ú0-9 &._-]{2,40})/i)
+    if (m) marca = m[1].trim().replace(/\s+(empresa|marca|pauta|pautas|anuncios?|en\s+meta)\b.*$/i, '').trim()
+
+    // Si usuario solo dijo "mejores pautas" y hay imagen → detectar marca en imagen
+    const usarImagen = !marca && hayImagenReciente() && /\b(esta|este)\b/.test(txLow)
+
+    if (!marca && !usarImagen) {
+      await client.sendMessage(grupoId,
+        '🤔 ¿De qué marca? Ej:\n' +
+        '• *pautas de Vélez*\n' +
+        '• *mejores anuncios de Dalius*\n\n' +
+        'O mándame screenshot de un anuncio y escribe *pautas de esta empresa* — yo detecto la marca.')
+      return
+    }
+
+    await client.sendMessage(grupoId,
+      usarImagen
+        ? '🔍 Detectando marca en la imagen + buscando sus pautas activas en Meta Ad Library...'
+        : `🔍 Buscando pautas activas de *${marca}* en Meta Ad Library... (abro Chrome, ~30-60s)`)
+
+    const { spawn } = require('child_process')
+    const path_ = require('path')
+    const script = path_.join(CAMILA_BASE_DIR, 'analizar_pauta_competencia.py')
+    const spawnArgs = usarImagen
+      ? ['-u', script, '--desde-imagen', ultimaImagenCamila[grupoId].path]
+      : ['-u', script, marca, '--max', '15']
+
+    const proc = spawn(CAMILA_PYTHON_EXE, spawnArgs, { shell: false })
+    let salida = ''
+    proc.stdout.on('data', d => { salida += d.toString() })
+    proc.stderr.on('data', d => { salida += d.toString() })
+    proc.on('close', async () => {
+      const fsm = require('fs')
+      const mr = salida.match(/RESULTADO_JSON:(\{[\s\S]*\})/)
+      if (!mr) {
+        await client.sendMessage(grupoId, `❌ Falló la búsqueda.\n\`\`\`${salida.slice(-600)}\`\`\``)
+        return
+      }
+      let res
+      try { res = JSON.parse(mr[1]) } catch { await client.sendMessage(grupoId, '❌ No pude parsear la respuesta.'); return }
+      if (!res.ok) {
+        await client.sendMessage(grupoId, `❌ ${res.error || 'error'}`)
+        return
+      }
+      let out = `📊 *Pautas activas de ${res.marca}* (${res.pais})\n\n`
+      out += `Total encontrado: ${res.total}\n\n`
+      if (res.total === 0) {
+        out += '_No tiene anuncios activos en Meta ahora mismo (o la marca no es scrappeable por este nombre)._'
+      } else {
+        out += `*Muestra:*\n`
+        for (const a of (res.anuncios || []).slice(0, 5)) {
+          const txt = (a.texto || '').replace(/\n+/g, ' ').slice(0, 150)
+          out += `• ${a.pagina || '(sin nombre)'}\n  _${txt}..._\n\n`
+        }
+      }
+      out += `\nDatos completos: ${path_.basename(res.json || '')}`
+      await client.sendMessage(grupoId, out)
+      // Enviar screenshot si existe
+      if (res.screenshot && fsm.existsSync(res.screenshot)) {
+        try {
+          await client.sendMessage(grupoId, MessageMedia.fromFilePath(res.screenshot), { caption: '📸 Overview Meta Ad Library' })
+        } catch (e) { console.error('[CAMILA] Error enviando screenshot pauta:', e.message) }
+      }
+    })
+    return
+  }
 
   // ── Comando: analiza ig ──────────────────────────────────────
   if (/\b(analiza|analizar|analisis)\b.*\b(ig|instagram)\b/.test(txLow) || txLow === 'ig' || txLow === 'instagram') {
@@ -2632,13 +2994,20 @@ async function procesarCamila(msg, chat) {
   // ── Comando: ayuda ───────────────────────────────────────────
   if (/\b(ayuda|help|comandos)\b/.test(txLow)) {
     await client.sendMessage(grupoId,
-      `👋 Hola, soy *Camila*.\n\nComandos disponibles:\n\n` +
-      `📱 *analiza ig* — análisis nuevo del Instagram (corre scraper, 1-2 min)\n` +
-      `📋 *resumen ig* — lee el último análisis guardado (instantáneo)\n` +
+      `👋 Hola, soy *Camila*, marketing de Priority.\n\n*Instagram:*\n` +
+      `📱 *analiza ig* — análisis nuevo (1-2 min)\n` +
+      `📋 *resumen ig* — último análisis guardado\n\n` +
+      `*Competencia — espiar pautas activas:*\n` +
+      `• *pautas de Vélez* / *mejores anuncios de Dalius* — scrapea Meta Ad Library\n` +
+      `• 📸 [manda screenshot] + *pautas de esta empresa* — detecto la marca sola\n\n` +
+      `*Replicar anuncios de competencia:*\n` +
+      `📸 mándame screenshot → luego dime:\n` +
+      `• *copia con el tote* / *2 copias con la billetera* / *3 variantes con el maletín*\n` +
+      `• *analiza* — te digo qué producto, estilo y público vende\n\n` +
+      `*Productos que sé replicar:* tote, media luna, baúl, maletín, maleta, delantal, porta pasaportes, billetera, cuchillos\n\n` +
       `📊 *resumen* — estado general de la campaña\n` +
-      `📸 *enviar imagen* — replicar anuncio de competidor (próximamente)\n` +
-      `❓ *ayuda* — este mensaje\n\n` +
-      `Puedes escribir o mandar nota de voz.`)
+      `📈 *audita pauta* / *pautas nuestras* — descarga 24 meses de insights de Meta Ads y devuelve Excel con Top ROAS, Losers, breakdowns (requiere META_ACCESS_TOKEN en .bat — ver INSTRUCCIONES_META_TOKEN.md)\n\n` +
+      `_Puedes escribir o mandar nota de voz._`)
     return
   }
 
@@ -3182,10 +3551,10 @@ setInterval(async () => {
 }, 60 * 1000)
 
 // ════════════════════════════════════════════════════════════
-// ─── VERIFICACIÓN DE PAGOS POR COMPROBANTE (Daniela - Verificacion Pagos AI)
+// ─── VERIFICACIÓN DE PAGOS POR COMPROBANTE (Jorge - Verificacion Pagos AI)
 // ════════════════════════════════════════════════════════════
 //
-// Cuando llega una imagen al grupo "Daniela - Verificacion Pagos AI":
+// Cuando llega una imagen al grupo "Jorge - Verificacion Pagos AI":
 //   1. Gemini Vision extrae monto/fecha/tipo/referencia del comprobante
 //   2. Se busca en Gmail de sbgcorporation1 correos de Bancolombia / Nequi / Daviplata
 //      con ese monto en las últimas 24h
@@ -3485,6 +3854,108 @@ client.on('ready', async () => {
   } catch (err) {
     console.log('[Groq] ❌ Error:', err.message)
   }
+
+  // ===== COLA DE ENVÍOS (para asesores Claude) =====
+  // Cada asesor (Carlos, Camila, Sandra, etc.) deja en cola_envios/<nombre>/
+  // un archivo + un <archivo>.meta.json con { grupo, caption, as_document }
+  // y el bot lo envía al grupo. Los mueve a cola_envios/enviados/<asesor>/
+  // Usa PROYECTO_DIR (H:\...) no __dirname (C:\bot-personal\) — el bot se copia a C: al arrancar
+  const COLA_ENVIOS_DIR = path.join(PROYECTO_DIR, 'cola_envios')
+  const COLA_ENVIADOS_DIR = path.join(COLA_ENVIOS_DIR, 'enviados')
+  console.log(`[COLA] 📁 vigilando: ${COLA_ENVIOS_DIR}`)
+
+  async function procesarColaEnvios() {
+    try {
+      if (!fs.existsSync(COLA_ENVIOS_DIR)) return
+      if (!fs.existsSync(COLA_ENVIADOS_DIR)) fs.mkdirSync(COLA_ENVIADOS_DIR, { recursive: true })
+
+      const asesores = fs.readdirSync(COLA_ENVIOS_DIR).filter(d => {
+        const full = path.join(COLA_ENVIOS_DIR, d)
+        try { return fs.statSync(full).isDirectory() && d !== 'enviados' } catch { return false }
+      })
+
+      for (const asesor of asesores) {
+        const dir = path.join(COLA_ENVIOS_DIR, asesor)
+        const metas = fs.readdirSync(dir).filter(f => f.endsWith('.meta.json'))
+
+        for (const metaFile of metas) {
+          const metaPath = path.join(dir, metaFile)
+          const baseName = metaFile.replace(/\.meta\.json$/, '')
+          const archivoPath = path.join(dir, baseName)
+          if (!fs.existsSync(archivoPath)) continue
+
+          try {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+            const chats = await client.getChats()
+            const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+            const target = norm(meta.grupo)
+            // Intenta match exacto primero, luego includes (mas tolerante)
+            let grupo = chats.find(c => c.isGroup && norm(c.name) === target)
+            if (!grupo) grupo = chats.find(c => c.isGroup && norm(c.name).includes(target))
+
+            if (!grupo) {
+              const gruposDisponibles = chats.filter(c => c.isGroup).map(c => c.name).slice(0, 20)
+              console.log(`[COLA] ⚠️ grupo no encontrado: "${meta.grupo}" (${asesor}/${baseName})`)
+              console.log(`[COLA]   grupos disponibles: ${JSON.stringify(gruposDisponibles)}`)
+              continue
+            }
+
+            const media = MessageMedia.fromFilePath(archivoPath)
+            await client.sendMessage(grupo.id._serialized, media, {
+              caption: meta.caption || '',
+              sendMediaAsDocument: meta.as_document !== false
+            })
+            console.log(`[COLA] ✅ ${asesor}/${baseName} -> "${meta.grupo}"`)
+
+            const destDir = path.join(COLA_ENVIADOS_DIR, asesor)
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+            fs.renameSync(archivoPath, path.join(destDir, `${ts}_${baseName}`))
+            fs.renameSync(metaPath, path.join(destDir, `${ts}_${metaFile}`))
+          } catch (err) {
+            console.error(`[COLA] ❌ error enviando ${asesor}/${baseName}:`, err.message)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[COLA] error general:', err.message)
+    }
+  }
+
+  setInterval(procesarColaEnvios, 10000)
+  console.log('[COLA] 📬 Monitor de cola_envios activo (cada 10s)')
 })
+
+// ─── SERVIDOR HTTP (restauración de datos) ───────────────────
+const RESTORE_TOKEN = process.env.RESTORE_TOKEN || 'sbg-restore-2026'
+const httpServer = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/restaurar-datos') {
+    const auth = req.headers['x-token']
+    if (auth !== RESTORE_TOKEN) {
+      res.writeHead(403); res.end('Forbidden'); return
+    }
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => {
+      try {
+        const datos = JSON.parse(body)
+        if (!Array.isArray(datos)) throw new Error('Debe ser array')
+        guardarDatos(datos, GASTOS_EXCEL)
+        console.log(`[RESTORE] gastos_personales_data.json restaurado con ${datos.length} entradas`)
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, entradas: datos.length }))
+      } catch (e) {
+        res.writeHead(400); res.end(e.message)
+      }
+    })
+  } else if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200); res.end('ok')
+  } else {
+    res.writeHead(404); res.end('Not found')
+  }
+})
+const PORT = parseInt(process.env.PORT || '3000')
+httpServer.listen(PORT, () => console.log(`[HTTP] Servidor en puerto ${PORT}`))
+// ─────────────────────────────────────────────────────────────
 
 client.initialize()
